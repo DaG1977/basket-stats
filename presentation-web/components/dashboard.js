@@ -308,6 +308,10 @@ export function Dashboard() {
                 <strong>
                   {teamDetail.totals.wins}-{teamDetail.totals.losses}
                 </strong>
+                <div className="muted stat-note">
+                  {teamDetail.totals.completedGameCount} utkání se známým skóre
+                  {teamDetail.totals.draws ? ` • remízy ${teamDetail.totals.draws}` : ""}
+                </div>
               </div>
               <div className="stat-card">
                 <span>Soutěžní rok</span>
@@ -371,13 +375,13 @@ export function Dashboard() {
               teamDetail.games.map((game) => (
                 <button
                   key={game.id}
-                  className={`game-card${game.id === selectedGameId ? " is-active" : ""}`}
+                  className={`game-card game-card--${game.outcome}${game.id === selectedGameId ? " is-active" : ""}`}
                   type="button"
                   onClick={() => setSelectedGameId(game.id)}
                 >
                   <strong>{game.opponentName}</strong>
                   <span>{formatDateTime(game.scheduledAt)}</span>
-                  <small>
+                  <small className={`game-result game-result--${game.outcome}`}>
                     {game.isHome ? "domácí" : "venku"}
                     {game.resultLabel ? ` • ${game.resultLabel}` : ""}
                   </small>
@@ -404,7 +408,9 @@ export function Dashboard() {
               </div>
               <div>
                 <span>Výsledek</span>
-                <strong>{gameDetail.game.resultLabel || "—"}</strong>
+                <strong className={`result-highlight result-highlight--${gameDetail.game.outcome}`}>
+                  {gameDetail.game.resultLabel || "—"}
+                </strong>
               </div>
               <div>
                 <span>Soutěž</span>

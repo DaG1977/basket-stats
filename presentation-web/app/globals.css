@@ -1,6 +1,8 @@
 :root {
   --accent: #f14b14;
   --accent-dark: #cf3d0d;
+  --win: #2e9e44;
+  --loss: #c93c3c;
   --text: #000000;
   --muted: #808080;
   --line: #d7d7d7;
@@ -281,6 +283,33 @@ h3 {
   background: #fff4ef;
 }
 
+.game-card--win {
+  border-left: 4px solid var(--win);
+}
+
+.game-card--loss {
+  border-left: 4px solid var(--loss);
+}
+
+.game-card--draw {
+  border-left: 4px solid var(--accent);
+}
+
+.game-result--win {
+  color: var(--win) !important;
+  font-weight: 700;
+}
+
+.game-result--loss {
+  color: var(--loss) !important;
+  font-weight: 700;
+}
+
+.game-result--draw {
+  color: var(--accent-dark) !important;
+  font-weight: 700;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -304,6 +333,11 @@ h3 {
 .stat-card strong {
   font-size: 22px;
   font-weight: 700;
+}
+
+.stat-note {
+  margin-top: 8px;
+  font-size: 12px;
 }
 
 .table-wrap {
@@ -367,6 +401,18 @@ h3 {
 
 .detail-meta strong {
   font-size: 15px;
+}
+
+.result-highlight--win {
+  color: var(--win);
+}
+
+.result-highlight--loss {
+  color: var(--loss);
+}
+
+.result-highlight--draw {
+  color: var(--accent-dark);
 }
 
 @media (max-width: 991px) {

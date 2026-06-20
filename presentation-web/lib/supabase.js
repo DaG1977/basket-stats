@@ -69,6 +69,21 @@ function getOpponentScore(game) {
   return game.is_home ? game.guest_score : game.home_score;
 }
 
+function getGameOutcome(game) {
+  const ourScore = getOurScore(game);
+  const opponentScore = getOpponentScore(game);
+  if (ourScore == null || opponentScore == null) {
+    return "unknown";
+  }
+  if (ourScore > opponentScore) {
+    return "win";
+  }
+  if (ourScore < opponentScore) {
+    return "loss";
+  }
+  return "draw";
+}
+
 function uniqueCount(values) {
   return new Set(values.filter(Boolean)).size;
 }
@@ -202,6 +217,7 @@ async function loadGames(teamSeasonId) {
     checked: row.checked,
     roundNumber: row.round_number,
     resultLabel: formatGameResult(row),
+    outcome: getGameOutcome(row),
     competition: row.competitions
       ? {
           id: row.competitions.id,
@@ -356,11 +372,10 @@ export async function buildTeamSeasonDetail(teamSeasonId, calendarYear) {
   const gamePlayersPerGame = await Promise.all(games.map((game) => loadGamePlayers(game.id)));
   const flatGamePlayers = gamePlayersPerGame.flat();
   const playerSummaries = buildPlayerSummaries(roster, games, flatGamePlayers, calendarYear);
-  const wins = games.filter((game) => {
-    const ourScore = getOurScore(game);
-    const opponentScore = getOpponentScore(game);
-    return ourScore != null && opponentScore != null && ourScore > opponentScore;
-  }).length;
+  const completedGames = games.filter((game) => getGameOutcome(game) !== "unknown");
+  const wins = completedGames.filter((game) => game.outcome === "win").length;
+  const losses = completedGames.filter((game) => game.outcome === "loss").length;
+  const draws = completedGames.filter((game) => game.outcome === "draw").length;
 
   return {
     teamSeason,
@@ -371,7 +386,9 @@ export async function buildTeamSeasonDetail(teamSeasonId, calendarYear) {
       rosterCount: roster.filter((item) => item.isActive).length,
       gameCount: games.length,
       wins,
-      losses: Math.max(games.length - wins, 0)
+      losses,
+      draws,
+      completedGameCount: completedGames.length
     }
   };
 }
@@ -403,6 +420,7 @@ export async function buildGameDetail(gameId) {
       checked: row.checked,
       roundNumber: row.round_number,
       resultLabel: formatGameResult(row),
+      outcome: getGameOutcome(row),
       teamSeason: {
         id: row.team_seasons.id,
         category: row.team_seasons.category,
