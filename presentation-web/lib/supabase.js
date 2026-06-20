@@ -49,24 +49,32 @@ function getBirthYear(birthDate) {
 }
 
 function formatGameResult(game) {
-  if (game.home_score == null || game.guest_score == null) {
+  const homeScore = game.home_score ?? game.homeScore;
+  const guestScore = game.guest_score ?? game.guestScore;
+  if (homeScore == null || guestScore == null) {
     return "";
   }
-  return `${game.home_score}:${game.guest_score}`;
+  return `${homeScore}:${guestScore}`;
 }
 
 function getOurScore(game) {
-  if (game.home_score == null || game.guest_score == null || game.is_home == null) {
+  const homeScore = game.home_score ?? game.homeScore;
+  const guestScore = game.guest_score ?? game.guestScore;
+  const isHome = game.is_home ?? game.isHome;
+  if (homeScore == null || guestScore == null || isHome == null) {
     return null;
   }
-  return game.is_home ? game.home_score : game.guest_score;
+  return isHome ? homeScore : guestScore;
 }
 
 function getOpponentScore(game) {
-  if (game.home_score == null || game.guest_score == null || game.is_home == null) {
+  const homeScore = game.home_score ?? game.homeScore;
+  const guestScore = game.guest_score ?? game.guestScore;
+  const isHome = game.is_home ?? game.isHome;
+  if (homeScore == null || guestScore == null || isHome == null) {
     return null;
   }
-  return game.is_home ? game.guest_score : game.home_score;
+  return isHome ? guestScore : homeScore;
 }
 
 function getGameOutcome(game) {
