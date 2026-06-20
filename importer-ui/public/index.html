@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CBF Importer</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">BK Import</p>
+        <h1>Import utkání a soupisek BK Skokani</h1>
+        <p class="lede">
+          První část importuje utkání z CBF do Supabase. Druhá část pošle vybrané
+          hráče do service.cbf.cz jako soupisku utkání.
+        </p>
+      </section>
+
+      <section class="panel">
+        <form id="import-form" class="form">
+          <label class="context-field">
+            <span>Tým</span>
+            <select id="team-select" name="teamCode" required></select>
+          </label>
+
+          <label class="context-field">
+            <span>Sezóna</span>
+            <select id="season-select" name="seasonCode" required></select>
+          </label>
+
+          <label class="wide context-field">
+            <span>PHPSESSID pro service.cbf.cz</span>
+            <input
+              id="shared-service-session-id"
+              name="sharedServiceSessionId"
+              type="password"
+              placeholder="Sdílená session pro service funkce"
+            >
+          </label>
+
+          <div class="wide actions-row">
+            <button id="clear-shared-session-button" type="button" class="ghost-button">Vymazat session</button>
+          </div>
+
+          <details class="wide service-details">
+            <summary>Ruční zadání ID utkání</summary>
+          <label class="wide focus-field">
+            <span>ID utkání</span>
+            <textarea
+              id="game-ids"
+              name="gameIds"
+              rows="7"
+              placeholder="500671&#10;500672&#10;500673"
+            ></textarea>
+          </label>
+          </details>
+
+
+          <div class="wide roster-panel">
+            <div class="roster-toolbar">
+              <strong>Načtená utkání</strong>
+              <div class="roster-toolbar-actions">
+                <button id="toggle-games-panel-button" type="button" class="ghost-button">Skrýt seznam</button>
+                <button id="select-all-games-button" type="button" class="ghost-button">Vybrat vše</button>
+                <button id="clear-games-button" type="button" class="ghost-button">Zrušit výběr</button>
+              </div>
+            </div>
+            <div id="game-selection-list" class="sync-list is-empty">
+              Nejprve načti utkání týmu.
+            </div>
+          </div>
+
+          <label class="wide toggle-field" for="only-missing-games">
+            <input id="only-missing-games" name="onlyMissingGames" type="checkbox" checked>
+            <span>Jen neimportovaná utkání</span>
+          </label>
+
+          <div class="wide actions-row">
+            <button id="load-games-button" type="button" class="secondary-button">Načíst utkání týmu</button>
+            <button id="submit-button" type="submit">Importovat do DB</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Správa soupisky týmu</h2>
+          <p id="roster-admin-status-text">Zatím nic nespouštěno.</p>
+        </div>
+        <p id="roster-admin-context-text" class="section-context">
+          Aktuálně upravuješ soupisku podle horního výběru týmu a sezóny.
+        </p>
+
+        <form id="roster-admin-form" class="form">
+          <div class="wide actions-row">
+            <button id="load-roster-admin-button" type="button" class="secondary-button">Načíst soupisku pro úpravu</button>
+            <button id="import-hosted-players-button" type="button" class="ghost-button">Importovat hostující ze service</button>
+            <button id="save-roster-admin-button" type="submit" disabled>Uložit soupisku</button>
+          </div>
+
+          <label class="context-field">
+            <span>Načíst hráče ze service podle player_id</span>
+            <div class="roster-copy-panel">
+              <input id="service-player-id" name="servicePlayerId" type="text" placeholder="119449">
+              <button id="load-service-player-button" type="button" class="ghost-button">Načíst hráče ze service</button>
+            </div>
+          </label>
+          <label class="context-field">
+            <span>Nouzový fallback, když service detail nevrátí jméno</span>
+            <div class="roster-copy-panel">
+              <input id="service-player-name-fallback" name="servicePlayerNameFallback" type="text" placeholder="Např. Ondřej Husák">
+              <input id="service-player-birth-year-fallback" name="servicePlayerBirthYearFallback" type="text" placeholder="Ročník 2011">
+            </div>
+          </label>
+
+
+          <div class="wide roster-panel">
+            <div class="roster-toolbar">
+              <strong>Všichni hráči</strong>
+              <div class="roster-toolbar-actions">
+                <button id="toggle-roster-admin-panel-button" type="button" class="ghost-button">Skrýt seznam</button>
+                <button id="select-all-roster-admin-button" type="button" class="ghost-button">Vybrat vše</button>
+                <button id="clear-roster-admin-button" type="button" class="ghost-button">Zrušit výběr</button>
+              </div>
+            </div>
+            <div id="roster-admin-list" class="roster-list is-empty">
+              Nejprve načti soupisku pro vybraný tým a sezónu.
+            </div>
+          </div>
+        </form>
+
+        <details class="service-details">
+          <summary>Výstup správy soupisky</summary>
+          <pre id="roster-admin-output">-</pre>
+        </details>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Soupiska ze service</h2>
+          <p id="service-sync-status-text">Zatím nic nespouštěno.</p>
+        </div>
+        <p id="service-sync-context-text" class="section-context">
+          Porovnání se provede pro tým a sezónu z horního výběru.
+        </p>
+
+        <form id="service-sync-form" class="form">
+          <input id="service-team-id" name="serviceTeamId" type="hidden">
+
+          <p class="field-summary wide">
+            Používá sdílenou PHPSESSID z horní části.
+          </p>
+
+          <div class="wide actions-row">
+            <button id="load-service-sync-button" type="button" class="secondary-button">Načíst a porovnat</button>
+            <button id="create-missing-service-players-button" type="button" class="ghost-button" disabled>Založit chybějící hráče lokálně</button>
+            <button id="apply-service-sync-button" type="submit" disabled>Použít vybrané změny do lokální DB</button>
+          </div>
+
+          <div class="wide roster-panel">
+            <div class="roster-toolbar">
+              <strong>Rozdíly soupisky</strong>
+              <div class="roster-toolbar-actions">
+                <button id="toggle-service-sync-panel-button" type="button" class="ghost-button">Skrýt seznam</button>
+                <button id="select-all-service-sync-button" type="button" class="ghost-button">Vybrat vše</button>
+                <button id="clear-service-sync-button" type="button" class="ghost-button">Zrušit výběr</button>
+              </div>
+            </div>
+            <div id="service-sync-list" class="sync-list is-empty">
+              Nejprve načti soupisku ze service.
+            </div>
+          </div>
+        </form>
+
+        <details class="service-details">
+          <summary>Výstup synchronizace ze service</summary>
+          <pre id="service-sync-output">-</pre>
+        </details>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Soupiska do service.cbf.cz</h2>
+          <p id="service-status-text">Zatím nic nespouštěno.</p>
+        </div>
+        <p id="service-roster-context-text" class="section-context">
+          Hráči se načítají z lokální soupisky podle horního výběru týmu a sezóny.
+        </p>
+
+        <form id="service-form" class="form">
+          <label class="context-field">
+            <span>ID utkání v service</span>
+            <input id="service-game-id" name="serviceGameId" type="text" placeholder="524005" required>
+          </label>
+          
+          <p id="service-game-summary" class="field-summary wide">
+            Po zadání ID utkání se zde zobrazí datum a soupeř z lokální DB.
+          </p>
+          <p id="service-points-check" class="field-summary wide">
+            Po načtení utkání se zde zobrazí kontrola součtu bodů podle zadaných statistik.
+          </p>
+
+          <p class="field-summary wide">
+            Používá sdílenou PHPSESSID z horní části.
+          </p>
+
+          <div class="wide actions-row">
+            <button id="load-roster-button" type="button" class="secondary-button">Načíst soupisku týmu</button>
+            <button id="send-roster-button" type="submit" disabled>Zapsat soupisku do service</button>
+            <button id="import-service-game-button" type="button" class="ghost-button">Importovat toto utkání do DB</button>
+            <button id="import-service-stats-button" type="button" class="ghost-button">Importovat statistiky ze service</button>
+          </div>
+
+          <div class="wide roster-copy-panel">
+            <label class="context-field">
+              <span>Předvyplnit z utkání</span>
+              <select id="previous-game-select" disabled>
+                <option value="">Nejprve načti soupisku týmu</option>
+              </select>
+            </label>
+            <button id="apply-previous-game-button" type="button" class="ghost-button" disabled>Použít výběr z utkání</button>
+          </div>
+
+          <details class="wide service-details" id="service-stats-details">
+            <summary>Zadat i statistiky</summary>
+            <label class="toggle-field" for="service-stats-enabled">
+              <input id="service-stats-enabled" name="serviceStatsEnabled" type="checkbox">
+              <span>U vybraných hráčů zadat TH+, TH-, 2b+, 3b+ a osobní chyby</span>
+            </label>
+          </details>
+
+          <div class="wide roster-panel">
+            <div class="roster-toolbar">
+              <strong>Hráči týmu</strong>
+              <div class="roster-toolbar-actions">
+                <button id="toggle-roster-panel-button" type="button" class="ghost-button">Skrýt seznam</button>
+                <button id="select-all-roster-button" type="button" class="ghost-button">Vybrat vše</button>
+                <button id="clear-roster-button" type="button" class="ghost-button">Zrušit výběr</button>
+              </div>
+            </div>
+            <div id="roster-list" class="roster-list is-empty">
+              Nejprve načti soupisku týmu.
+            </div>
+          </div>
+        </form>
+
+        <details class="service-details">
+          <summary>Výstup pro service.cbf.cz</summary>
+          <pre id="service-output">-</pre>
+        </details>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="result-head">
+          <h2>Výsledek importu</h2>
+          <p id="status-text">Zatím nic nespouštěno.</p>
+        </div>
+
+        <div id="result-card" class="result-card is-empty">
+          <div class="result-meta">
+            <p><strong>Zpracované zápasy:</strong> <span id="processed-games">-</span></p>
+            <p><strong>Importovaní hráči:</strong> <span id="imported-players">-</span></p>
+            <p><strong>Importované statistiky:</strong> <span id="imported-stats">-</span></p>
+          </div>
+
+          <details>
+            <summary>Detail importu</summary>
+            <pre id="sql-preview">-</pre>
+          </details>
+
+          <details>
+            <summary>Chybějící hráči</summary>
+            <pre id="missing-preview">-</pre>
+          </details>
+
+          <details>
+            <summary>Výstup skriptu</summary>
+            <pre id="stdout-preview">-</pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

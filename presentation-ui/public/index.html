@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Statistiky | BK Skokani Brno</title>
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:400,500,700&amp;subset=latin-ext" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="hero-head">
+            <a class="logo-link" href="https://www.bkskokani.cz/" target="_blank" rel="noreferrer">
+              <img class="logo-image" src="https://www.bkskokani.cz/images/logo.svg" alt="BK Skokani Brno">
+            </a>
+            <div class="hero-links">
+              <a href="https://www.bkskokani.cz/" target="_blank" rel="noreferrer">Hlavní web</a>
+              <a href="https://www.bkskokani.cz/teamy" target="_blank" rel="noreferrer">Teamy</a>
+              <a href="https://www.bkskokani.cz/zapasy" target="_blank" rel="noreferrer">Zápasy</a>
+            </div>
+          </div>
+          <p class="eyebrow">BK Skokani Brno</p>
+          <h1>Klubové statistiky</h1>
+          <p class="lede">
+            Přehled týmů, soupisek, hráčů a utkání BK Skokani Brno nad klubovou databází.
+            Vyber sezónu, otevři tým a sleduj také počet utkání a soutěžních dnů v kalendářním roce.
+          </p>
+          <div class="hero-pills" aria-label="Obsah statistik">
+            <span>Soupisky</span>
+            <span>Hráči</span>
+            <span>Utkání</span>
+            <span>Soutěžní dny</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="toolbar-card">
+        <label class="field">
+          <span>Sezóna</span>
+          <select id="season-select"></select>
+        </label>
+        <label class="field">
+          <span>Kalendářní rok pro soutěžní dny</span>
+          <input id="calendar-year-input" type="number" min="2020" max="2035" step="1">
+        </label>
+      </section>
+
+      <section id="status-card" class="status-card">Načítám data...</section>
+
+      <section class="grid two-up">
+        <article class="panel">
+          <div class="section-head">
+            <h2>Týmy</h2>
+            <p id="teams-summary">-</p>
+          </div>
+          <div id="teams-list" class="stack-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>Souhrn týmu</h2>
+            <p id="team-summary-text">Vyber tým vlevo.</p>
+          </div>
+          <div id="team-summary" class="stat-grid empty-state">Zatím není vybraný žádný tým.</div>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="panel">
+          <div class="section-head">
+            <h2>Hráči</h2>
+            <p id="players-summary">Vyber tým.</p>
+          </div>
+          <div id="players-table-wrap" class="table-wrap empty-state">Zatím nic k zobrazení.</div>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>Utkání</h2>
+            <p id="games-summary">Vyber tým.</p>
+          </div>
+          <div id="games-list" class="stack-list empty-state">Zatím nic k zobrazení.</div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Detail utkání</h2>
+          <p id="game-detail-summary">Klikni na utkání vpravo.</p>
+        </div>
+        <div id="game-detail" class="empty-state">Detail utkání se zobrazí tady.</div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
