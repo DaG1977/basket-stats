@@ -70,6 +70,14 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function splitPlayerName(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  return {
+    lastName: parts[0] || "",
+    firstName: parts.slice(1).join(" ")
+  };
+}
+
 export function Dashboard() {
   const [status, setStatus] = useState({ message: "Načítám data...", kind: "neutral" });
   const [seasons, setSeasons] = useState([]);
@@ -253,19 +261,37 @@ export function Dashboard() {
     }
 
     downloadCsv(`skokani-hraci-${calendarYear}.csv`, [
-      ["Kalendářní rok", "Hráč", "Kód hráče", "Ročník", "Typ", "Utkání", "Soutěžní dny", "Body", "Týmy", "Datumy utkání"],
-      ...clubYearPlayers.players.map((player) => [
-        calendarYear,
-        player.fullName,
-        player.playerCode || "",
-        player.birthYear || "",
-        player.assignmentTypeLabel || "",
-        player.gamesPlayed,
-        player.competitionDaysInYear,
-        player.totalPoints,
-        (player.teams || []).join(", "),
-        (player.dates || []).map(formatDateCount).join(", ")
-      ])
+      [
+        "Kalendářní rok",
+        "Příjmení",
+        "Jméno",
+        "Hráč",
+        "Kód hráče",
+        "Ročník",
+        "Typ",
+        "Utkání",
+        "Soutěžní dny",
+        "Body",
+        "Týmy",
+        "Datumy utkání"
+      ],
+      ...clubYearPlayers.players.map((player) => {
+        const name = splitPlayerName(player.fullName);
+        return [
+          calendarYear,
+          name.lastName,
+          name.firstName,
+          player.fullName,
+          player.playerCode || "",
+          player.birthYear || "",
+          player.assignmentTypeLabel || "",
+          player.gamesPlayed,
+          player.competitionDaysInYear,
+          player.totalPoints,
+          (player.teams || []).join(", "),
+          (player.dates || []).map(formatDateCount).join(", ")
+        ];
+      })
     ]);
   }
 
