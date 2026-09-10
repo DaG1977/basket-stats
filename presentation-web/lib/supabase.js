@@ -29,22 +29,43 @@ function buildSupabaseUrl(tableOrPath, query = {}) {
 
 async function supabaseSelect(tableOrPath, query = {}) {
   assertSupabaseConfigured();
-  const url = buildSupabaseUrl(tableOrPath, query);
-  const response = await fetch(url, {
-    headers: {
+  const pageSize = 1000;
+  const hasExplicitLimit = query.limit !== undefined && query.limit !== null && query.limit !== "";
+  const rows = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const url = buildSupabaseUrl(tableOrPath, query);
+    const headers = {
       apikey: SUPABASE_SERVICE_ROLE_KEY,
       Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       Accept: "application/json"
-    },
-    cache: "no-store"
-  });
+    };
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Supabase ${response.status}: ${text}`);
+    if (!hasExplicitLimit) {
+      headers.Range = `${offset}-${offset + pageSize - 1}`;
+    }
+
+    const response = await fetch(url, {
+      headers,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Supabase ${response.status}: ${text}`);
+    }
+
+    const pageRows = await response.json();
+    if (hasExplicitLimit) {
+      return pageRows;
+    }
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < pageSize) {
+      return rows;
+    }
   }
-
-  return response.json();
 }
 
 function formatSeasonLabel(code) {
@@ -301,7 +322,7 @@ async function loadGamePlayers(gameId) {
 }
 
 function buildInFilter(values) {
-  return `in.(${values.map((value) => `"${value}"`).join(",")})`;
+  return `in.(${values.map((value) => String(value).replace(/"/g, "")).join(",")})`;
 }
 
 async function loadClubTeamSeasonIds(clubId) {
@@ -326,7 +347,8 @@ async function loadClubGamesInCalendarYear(clubId, calendarYear) {
   const rows = await supabaseSelect("games", {
     select: "id,scheduled_at,team_seasons!inner(id,teams!inner(id,name,team_code))",
     team_season_id: buildInFilter(teamSeasonIds),
-    scheduled_at: [`gte.${calendarYear}-01-01`, `lt.${Number(calendarYear) + 1}-01-01`]
+    scheduled_at: [`gte.${calendarYear}-01-01`, `lt.${Number(calendarYear) + 1}-01-01`],
+    order: "scheduled_at.asc.nullslast,id.asc"
   });
 
   return rows.map((row) => ({
@@ -346,7 +368,8 @@ async function loadClubGamePlayersForPlayers(playerIds, gameIds) {
   const rows = await supabaseSelect("game_players", {
     select: "id,game_id,player_id,is_present",
     player_id: buildInFilter(playerIds),
-    game_id: buildInFilter(gameIds)
+    game_id: buildInFilter(gameIds),
+    order: "game_id.asc,player_id.asc"
   });
 
   return rows.map((row) => ({
@@ -387,7 +410,8 @@ async function loadClubYearGamePlayers(gameIds) {
 
   const rows = await supabaseSelect("game_players", {
     select: "id,game_id,player_id,is_present,players!inner(id,full_name,player_code,birth_date),player_game_stats(id,points)",
-    game_id: buildInFilter(gameIds)
+    game_id: buildInFilter(gameIds),
+    order: "game_id.asc,player_id.asc"
   });
 
   return rows.map((row) => {
