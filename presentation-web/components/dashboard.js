@@ -21,6 +21,28 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatDateOnly(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("cs-CZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatDateCount(item) {
+  const label = formatDateOnly(item.date);
+  return item.count > 1 ? `${label} ${item.count}x` : label;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = await response.json();
@@ -231,15 +253,18 @@ export function Dashboard() {
     }
 
     downloadCsv(`skokani-hraci-${calendarYear}.csv`, [
-      ["Hráč", "Kód hráče", "Ročník", "Utkání klub/rok", "Soutěžní dny klub/rok", "Body", "Týmy"],
+      ["Kalendářní rok", "Hráč", "Kód hráče", "Ročník", "Typ", "Utkání", "Soutěžní dny", "Body", "Týmy", "Datumy utkání"],
       ...clubYearPlayers.players.map((player) => [
+        calendarYear,
         player.fullName,
         player.playerCode || "",
         player.birthYear || "",
+        player.assignmentTypeLabel || "",
         player.gamesPlayed,
         player.competitionDaysInYear,
         player.totalPoints,
-        (player.teams || []).join(", ")
+        (player.teams || []).join(", "),
+        (player.dates || []).map(formatDateCount).join(", ")
       ])
     ]);
   }
@@ -467,10 +492,10 @@ export function Dashboard() {
       <section className="panel">
         <div className="section-head">
           <div>
-            <h2>Hráči v kalendářním roce</h2>
+            <h2>Hráči v kalendářním roce {calendarYear || ""}</h2>
             <p>
               {clubYearPlayers
-                ? `${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
+                ? `${clubYearPlayers.calendarYear}: ${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
                 : "Zadej kalendářní rok."}
             </p>
           </div>
@@ -490,10 +515,12 @@ export function Dashboard() {
                 <tr>
                   <th>Hráč</th>
                   <th>Ročník</th>
+                  <th>Typ</th>
                   <th>Utkání</th>
                   <th>Soutěžní dny</th>
                   <th>Body</th>
                   <th>Týmy</th>
+                  <th>Datumy utkání</th>
                 </tr>
               </thead>
               <tbody>
@@ -504,10 +531,12 @@ export function Dashboard() {
                       <div className="muted">{player.playerCode || ""}</div>
                     </td>
                     <td>{player.birthYear || "—"}</td>
+                    <td>{player.assignmentTypeLabel || "—"}</td>
                     <td>{player.gamesPlayed}</td>
                     <td>{player.competitionDaysInYear}</td>
                     <td>{player.totalPoints}</td>
                     <td>{(player.teams || []).join(", ") || "—"}</td>
+                    <td className="date-list">{(player.dates || []).map(formatDateCount).join(", ") || "—"}</td>
                   </tr>
                 ))}
               </tbody>

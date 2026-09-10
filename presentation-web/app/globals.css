@@ -392,6 +392,13 @@ h3 {
   background: #fafafa;
 }
 
+.date-list {
+  min-width: 220px;
+  max-width: 360px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .muted,
 .empty-state {
   color: var(--muted);

@@ -380,6 +380,32 @@ async function loadClubGamePlayersForPlayers(playerIds, gameIds) {
   }));
 }
 
+async function loadClubRosterAssignmentsForPlayers(playerIds, teamSeasonIds) {
+  if (!playerIds.length || !teamSeasonIds.length) {
+    return [];
+  }
+
+  const rows = await supabaseSelect("player_team_seasons", {
+    select: "id,player_id,team_season_id,assignment_type,source_club_name,valid_from,valid_to,players!inner(id,birth_date),team_seasons!inner(id,teams!inner(id,name,team_code))",
+    player_id: buildInFilter(playerIds),
+    team_season_id: buildInFilter(teamSeasonIds),
+    order: "player_id.asc,team_season_id.asc"
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    playerId: row.player_id,
+    teamSeasonId: row.team_season_id,
+    assignmentType: row.assignment_type || "regular",
+    sourceClubName: row.source_club_name || "",
+    validFrom: row.valid_from,
+    validTo: row.valid_to,
+    birthYear: getBirthYear(row.players?.birth_date),
+    teamName: row.team_seasons?.teams?.name || "",
+    teamCode: row.team_seasons?.teams?.team_code || ""
+  }));
+}
+
 function buildClubYearCounts(gameRows, gamePlayerRows) {
   const gameById = new Map(gameRows.map((game) => [game.id, game]));
   const playerCounts = new Map();
@@ -437,9 +463,37 @@ async function loadClubYearGamePlayers(gameIds) {
   });
 }
 
-function buildClubYearPlayerSummaries(gameRows, gamePlayerRows) {
+function getAssignmentTypeLabel(assignments) {
+  if (assignments.some((assignment) => assignment.assignmentType === "hosting_in")) {
+    return "Hostování";
+  }
+  if (assignments.length) {
+    return "Náš hráč";
+  }
+  return "Neznámý";
+}
+
+function buildDateSummary(dateCounts) {
+  return [...dateCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, count]) => ({
+      date,
+      count,
+      label: count > 1 ? `${date} ${count}x` : date
+    }));
+}
+
+function buildClubYearPlayerSummaries(gameRows, gamePlayerRows, rosterAssignments) {
   const gameById = new Map(gameRows.map((game) => [game.id, game]));
+  const assignmentsByPlayerId = new Map();
   const summaries = new Map();
+
+  for (const assignment of rosterAssignments) {
+    if (!assignmentsByPlayerId.has(assignment.playerId)) {
+      assignmentsByPlayerId.set(assignment.playerId, []);
+    }
+    assignmentsByPlayerId.get(assignment.playerId).push(assignment);
+  }
 
   for (const item of gamePlayerRows) {
     const game = gameById.get(item.gameId);
@@ -455,20 +509,21 @@ function buildClubYearPlayerSummaries(gameRows, gamePlayerRows) {
         fullName: item.player.fullName,
         birthYear: item.player.birthYear,
         games: new Set(),
-        days: new Set(),
+        dateCounts: new Map(),
         teams: new Set(),
         totalPoints: 0
       };
 
     summary.games.add(item.gameId);
     if (game.scheduledAt) {
-      summary.days.add(String(game.scheduledAt).slice(0, 10));
+      const dateLabel = String(game.scheduledAt).slice(0, 10);
+      summary.dateCounts.set(dateLabel, (summary.dateCounts.get(dateLabel) || 0) + 1);
     }
     if (game.teamName) {
       summary.teams.add(game.teamName);
     }
-    if (item.stats && Number.isFinite(item.stats.points)) {
-      summary.totalPoints += item.stats.points;
+    if (item.stats && Number.isFinite(Number(item.stats.points))) {
+      summary.totalPoints += Number(item.stats.points);
     }
 
     summaries.set(item.playerId, summary);
@@ -476,12 +531,24 @@ function buildClubYearPlayerSummaries(gameRows, gamePlayerRows) {
 
   return [...summaries.values()]
     .map((summary) => ({
+      ...(() => {
+        const assignments = assignmentsByPlayerId.get(summary.playerId) || [];
+        return {
+          assignmentType: assignments.some((assignment) => assignment.assignmentType === "hosting_in")
+            ? "hosting_in"
+            : assignments.length
+              ? "regular"
+              : "",
+          assignmentTypeLabel: getAssignmentTypeLabel(assignments),
+          birthYear: summary.birthYear || assignments.find((assignment) => assignment.birthYear)?.birthYear || ""
+        };
+      })(),
       playerId: summary.playerId,
       playerCode: summary.playerCode,
       fullName: summary.fullName,
-      birthYear: summary.birthYear,
       gamesPlayed: summary.games.size,
-      competitionDaysInYear: summary.days.size,
+      competitionDaysInYear: summary.dateCounts.size,
+      dates: buildDateSummary(summary.dateCounts),
       totalPoints: summary.totalPoints,
       teams: [...summary.teams].sort((left, right) => left.localeCompare(right, "cs"))
     }))
@@ -614,7 +681,10 @@ export async function buildClubYearPlayers(calendarYear) {
   const clubId = await loadClubId();
   const games = await loadClubGamesInCalendarYear(clubId, calendarYear);
   const gamePlayers = await loadClubYearGamePlayers(games.map((game) => game.id));
-  const players = buildClubYearPlayerSummaries(games, gamePlayers);
+  const playerIds = [...new Set(gamePlayers.map((item) => item.playerId))];
+  const teamSeasonIds = [...new Set(games.map((game) => game.teamSeasonId).filter(Boolean))];
+  const rosterAssignments = await loadClubRosterAssignmentsForPlayers(playerIds, teamSeasonIds);
+  const players = buildClubYearPlayerSummaries(games, gamePlayers, rosterAssignments);
 
   return {
     calendarYear,
