@@ -30,12 +30,31 @@ async function fetchJson(url) {
   return payload;
 }
 
+function escapeCsvValue(value) {
+  const text = String(value ?? "");
+  return /[",\n\r;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(escapeCsvValue).join(";")).join("\r\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function Dashboard() {
   const [status, setStatus] = useState({ message: "Načítám data...", kind: "neutral" });
   const [seasons, setSeasons] = useState([]);
   const [seasonCode, setSeasonCode] = useState("");
   const [calendarYear, setCalendarYear] = useState("");
   const [overview, setOverview] = useState([]);
+  const [clubYearPlayers, setClubYearPlayers] = useState(null);
   const [selectedTeamSeasonId, setSelectedTeamSeasonId] = useState(null);
   const [teamDetail, setTeamDetail] = useState(null);
   const [selectedGameId, setSelectedGameId] = useState(null);
@@ -149,6 +168,34 @@ export function Dashboard() {
   }, [selectedTeamSeasonId, calendarYear]);
 
   useEffect(() => {
+    if (!/^\d{4}$/.test(String(calendarYear || ""))) {
+      setClubYearPlayers(null);
+      return;
+    }
+
+    let active = true;
+
+    async function run() {
+      try {
+        const payload = await fetchJson(`/api/club-year-players?calendarYear=${encodeURIComponent(calendarYear)}`);
+        if (active) {
+          setClubYearPlayers(payload);
+        }
+      } catch (error) {
+        if (active) {
+          setClubYearPlayers(null);
+          setStatus({ message: error.message || "Nepodařilo se načíst klubový roční přehled.", kind: "error" });
+        }
+      }
+    }
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [calendarYear]);
+
+  useEffect(() => {
     if (!selectedGameId) {
       return;
     }
@@ -177,6 +224,25 @@ export function Dashboard() {
       active = false;
     };
   }, [selectedGameId]);
+
+  function exportClubYearPlayers() {
+    if (!clubYearPlayers?.players?.length) {
+      return;
+    }
+
+    downloadCsv(`skokani-hraci-${calendarYear}.csv`, [
+      ["Hráč", "Kód hráče", "Ročník", "Utkání klub/rok", "Soutěžní dny klub/rok", "Body", "Týmy"],
+      ...clubYearPlayers.players.map((player) => [
+        player.fullName,
+        player.playerCode || "",
+        player.birthYear || "",
+        player.gamesPlayed,
+        player.competitionDaysInYear,
+        player.totalPoints,
+        (player.teams || []).join(", ")
+      ])
+    ]);
+  }
 
   return (
     <main className="shell">
@@ -338,8 +404,10 @@ export function Dashboard() {
                     <th>Hráč</th>
                     <th>Ročník</th>
                     <th>Typ</th>
-                    <th>Utkání</th>
-                    <th>Soutěžní dny</th>
+                    <th>Utkání v týmu</th>
+                    <th>Dny v týmu</th>
+                    <th>Utkání klub/rok</th>
+                    <th>Dny klub/rok</th>
                     <th>Body</th>
                   </tr>
                 </thead>
@@ -354,6 +422,8 @@ export function Dashboard() {
                       <td>{player.assignmentType === "hosting_in" ? "Hostování" : "Náš hráč"}</td>
                       <td>{player.gamesPlayed}</td>
                       <td>{player.competitionDaysInYear}</td>
+                      <td>{player.clubGamesInYear}</td>
+                      <td>{player.clubCompetitionDaysInYear}</td>
                       <td>{player.totalPoints}</td>
                     </tr>
                   ))}
@@ -392,6 +462,60 @@ export function Dashboard() {
             )}
           </div>
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Hráči v kalendářním roce</h2>
+            <p>
+              {clubYearPlayers
+                ? `${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
+                : "Zadej kalendářní rok."}
+            </p>
+          </div>
+          <button
+            className="export-button"
+            type="button"
+            disabled={!clubYearPlayers?.players?.length}
+            onClick={exportClubYearPlayers}
+          >
+            Export CSV
+          </button>
+        </div>
+        {clubYearPlayers?.players?.length ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Hráč</th>
+                  <th>Ročník</th>
+                  <th>Utkání</th>
+                  <th>Soutěžní dny</th>
+                  <th>Body</th>
+                  <th>Týmy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clubYearPlayers.players.map((player) => (
+                  <tr key={player.playerId}>
+                    <td>
+                      <strong>{player.fullName}</strong>
+                      <div className="muted">{player.playerCode || ""}</div>
+                    </td>
+                    <td>{player.birthYear || "—"}</td>
+                    <td>{player.gamesPlayed}</td>
+                    <td>{player.competitionDaysInYear}</td>
+                    <td>{player.totalPoints}</td>
+                    <td>{(player.teams || []).join(", ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">Pro zvolený kalendářní rok zatím nejsou dostupní žádní hráči.</div>
+        )}
       </section>
 
       <section className="panel">

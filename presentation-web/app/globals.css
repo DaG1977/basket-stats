@@ -237,6 +237,29 @@ h3 {
   text-align: right;
 }
 
+.export-button {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.export-button:disabled {
+  border-color: var(--line);
+  background: var(--soft);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.export-button:not(:disabled):hover {
+  background: var(--accent-dark);
+}
+
 .stack-list {
   display: grid;
   gap: 8px;

@@ -14,6 +14,14 @@ function buildSupabaseUrl(tableOrPath, query = {}) {
     if (value === undefined || value === null || value === "") {
       continue;
     }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null && item !== "") {
+          url.searchParams.append(key, item);
+        }
+      }
+      continue;
+    }
     url.searchParams.set(key, value);
   }
   return url;
@@ -292,7 +300,171 @@ async function loadGamePlayers(gameId) {
     .sort((left, right) => left.player.fullName.localeCompare(right.player.fullName, "cs"));
 }
 
-function buildPlayerSummaries(rosterRows, gameRows, gamePlayerRows, calendarYear) {
+function buildInFilter(values) {
+  return `in.(${values.map((value) => `"${value}"`).join(",")})`;
+}
+
+async function loadClubTeamSeasonIds(clubId) {
+  const rows = await supabaseSelect("team_seasons", {
+    select: "id,teams!inner(club_id)",
+    "teams.club_id": `eq.${clubId}`
+  });
+
+  return rows.map((row) => row.id);
+}
+
+async function loadClubGamesInCalendarYear(clubId, calendarYear) {
+  if (!calendarYear) {
+    return [];
+  }
+
+  const teamSeasonIds = await loadClubTeamSeasonIds(clubId);
+  if (!teamSeasonIds.length) {
+    return [];
+  }
+
+  const rows = await supabaseSelect("games", {
+    select: "id,scheduled_at,team_seasons!inner(id,teams!inner(id,name,team_code))",
+    team_season_id: buildInFilter(teamSeasonIds),
+    scheduled_at: [`gte.${calendarYear}-01-01`, `lt.${Number(calendarYear) + 1}-01-01`]
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    scheduledAt: row.scheduled_at,
+    teamSeasonId: row.team_seasons?.id,
+    teamName: row.team_seasons?.teams?.name || "",
+    teamCode: row.team_seasons?.teams?.team_code || ""
+  }));
+}
+
+async function loadClubGamePlayersForPlayers(playerIds, gameIds) {
+  if (!playerIds.length || !gameIds.length) {
+    return [];
+  }
+
+  const rows = await supabaseSelect("game_players", {
+    select: "id,game_id,player_id,is_present",
+    player_id: buildInFilter(playerIds),
+    game_id: buildInFilter(gameIds)
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    gameId: row.game_id,
+    playerId: row.player_id,
+    isPresent: row.is_present
+  }));
+}
+
+function buildClubYearCounts(gameRows, gamePlayerRows) {
+  const gameById = new Map(gameRows.map((game) => [game.id, game]));
+  const playerCounts = new Map();
+
+  for (const item of gamePlayerRows) {
+    if (item.isPresent === false || !gameById.has(item.gameId)) {
+      continue;
+    }
+
+    const current = playerCounts.get(item.playerId) || { games: new Set(), days: new Set() };
+    current.games.add(item.gameId);
+
+    const scheduledAt = gameById.get(item.gameId).scheduledAt;
+    if (scheduledAt) {
+      current.days.add(String(scheduledAt).slice(0, 10));
+    }
+
+    playerCounts.set(item.playerId, current);
+  }
+
+  return playerCounts;
+}
+
+async function loadClubYearGamePlayers(gameIds) {
+  if (!gameIds.length) {
+    return [];
+  }
+
+  const rows = await supabaseSelect("game_players", {
+    select: "id,game_id,player_id,is_present,players!inner(id,full_name,player_code,birth_date),player_game_stats(id,points)",
+    game_id: buildInFilter(gameIds)
+  });
+
+  return rows.map((row) => {
+    const stats = Array.isArray(row.player_game_stats) ? row.player_game_stats[0] : row.player_game_stats;
+    return {
+      id: row.id,
+      gameId: row.game_id,
+      playerId: row.player_id,
+      isPresent: row.is_present,
+      player: {
+        id: row.players.id,
+        fullName: row.players.full_name,
+        playerCode: row.players.player_code,
+        birthDate: row.players.birth_date,
+        birthYear: getBirthYear(row.players.birth_date)
+      },
+      stats: stats
+        ? {
+            points: stats.points
+          }
+        : null
+    };
+  });
+}
+
+function buildClubYearPlayerSummaries(gameRows, gamePlayerRows) {
+  const gameById = new Map(gameRows.map((game) => [game.id, game]));
+  const summaries = new Map();
+
+  for (const item of gamePlayerRows) {
+    const game = gameById.get(item.gameId);
+    if (item.isPresent === false || !game) {
+      continue;
+    }
+
+    const summary =
+      summaries.get(item.playerId) ||
+      {
+        playerId: item.player.id,
+        playerCode: item.player.playerCode,
+        fullName: item.player.fullName,
+        birthYear: item.player.birthYear,
+        games: new Set(),
+        days: new Set(),
+        teams: new Set(),
+        totalPoints: 0
+      };
+
+    summary.games.add(item.gameId);
+    if (game.scheduledAt) {
+      summary.days.add(String(game.scheduledAt).slice(0, 10));
+    }
+    if (game.teamName) {
+      summary.teams.add(game.teamName);
+    }
+    if (item.stats && Number.isFinite(item.stats.points)) {
+      summary.totalPoints += item.stats.points;
+    }
+
+    summaries.set(item.playerId, summary);
+  }
+
+  return [...summaries.values()]
+    .map((summary) => ({
+      playerId: summary.playerId,
+      playerCode: summary.playerCode,
+      fullName: summary.fullName,
+      birthYear: summary.birthYear,
+      gamesPlayed: summary.games.size,
+      competitionDaysInYear: summary.days.size,
+      totalPoints: summary.totalPoints,
+      teams: [...summary.teams].sort((left, right) => left.localeCompare(right, "cs"))
+    }))
+    .sort((left, right) => left.fullName.localeCompare(right.fullName, "cs"));
+}
+
+function buildPlayerSummaries(rosterRows, gameRows, gamePlayerRows, calendarYear, clubYearCounts = new Map()) {
   const gameById = new Map(gameRows.map((game) => [game.id, game]));
   const summaries = new Map();
 
@@ -309,6 +481,8 @@ function buildPlayerSummaries(rosterRows, gameRows, gamePlayerRows, calendarYear
       validTo: rosterEntry.validTo,
       gamesPlayed: 0,
       competitionDaysInYear: 0,
+      clubGamesInYear: 0,
+      clubCompetitionDaysInYear: 0,
       totalPoints: 0
     });
   }
@@ -345,6 +519,9 @@ function buildPlayerSummaries(rosterRows, gameRows, gamePlayerRows, calendarYear
 
     summary.gamesPlayed = playerGames.length;
     summary.competitionDaysInYear = uniqueCount(dayLabels);
+    const clubCounts = clubYearCounts.get(playerId);
+    summary.clubGamesInYear = clubCounts ? clubCounts.games.size : 0;
+    summary.clubCompetitionDaysInYear = clubCounts ? clubCounts.days.size : 0;
     summary.totalPoints = totalPoints;
   }
 
@@ -374,12 +551,20 @@ export async function buildOverview(seasonCode) {
 }
 
 export async function buildTeamSeasonDetail(teamSeasonId, calendarYear) {
+  const clubId = await loadClubId();
   const teamSeason = await loadTeamSeason(teamSeasonId);
   const [roster, games] = await Promise.all([loadRoster(teamSeasonId), loadGames(teamSeasonId)]);
 
   const gamePlayersPerGame = await Promise.all(games.map((game) => loadGamePlayers(game.id)));
   const flatGamePlayers = gamePlayersPerGame.flat();
-  const playerSummaries = buildPlayerSummaries(roster, games, flatGamePlayers, calendarYear);
+  const rosterPlayerIds = roster.map((item) => item.player.id);
+  const clubYearGames = await loadClubGamesInCalendarYear(clubId, calendarYear);
+  const clubYearGamePlayers = await loadClubGamePlayersForPlayers(
+    rosterPlayerIds,
+    clubYearGames.map((game) => game.id)
+  );
+  const clubYearCounts = buildClubYearCounts(clubYearGames, clubYearGamePlayers);
+  const playerSummaries = buildPlayerSummaries(roster, games, flatGamePlayers, calendarYear, clubYearCounts);
   const completedGames = games.filter((game) => getGameOutcome(game) !== "unknown");
   const wins = completedGames.filter((game) => game.outcome === "win").length;
   const losses = completedGames.filter((game) => game.outcome === "loss").length;
@@ -397,6 +582,23 @@ export async function buildTeamSeasonDetail(teamSeasonId, calendarYear) {
       losses,
       draws,
       completedGameCount: completedGames.length
+    }
+  };
+}
+
+export async function buildClubYearPlayers(calendarYear) {
+  const clubId = await loadClubId();
+  const games = await loadClubGamesInCalendarYear(clubId, calendarYear);
+  const gamePlayers = await loadClubYearGamePlayers(games.map((game) => game.id));
+  const players = buildClubYearPlayerSummaries(games, gamePlayers);
+
+  return {
+    calendarYear,
+    players,
+    totals: {
+      playerCount: players.length,
+      gameCount: games.length,
+      competitionDayCount: uniqueCount(games.map((game) => String(game.scheduledAt || "").slice(0, 10)))
     }
   };
 }
