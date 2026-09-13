@@ -716,6 +716,134 @@ function updateGameIdsFieldFromSelection() {
   isSyncingGameIdsField = false;
 }
 
+function setGameRowActionState(rowActions, isLoading) {
+  rowActions.querySelectorAll("button").forEach(button => {
+    button.disabled = isLoading || button.dataset.disabledByData === "true";
+  });
+}
+
+function setGameRowStatus(statusElement, message, state = "") {
+  statusElement.textContent = message;
+  statusElement.classList.toggle("is-ok", state === "ok");
+  statusElement.classList.toggle("is-warning", state === "warning");
+  statusElement.classList.toggle("is-error", state === "error");
+}
+
+function requireSharedServiceSession() {
+  const phpSessionId = sharedServiceSessionIdField.value.trim();
+  if (!phpSessionId) {
+    throw new Error("Vyplň PHPSESSID pro service.cbf.cz.");
+  }
+
+  return phpSessionId;
+}
+
+async function importGameToLocalDb(gameId) {
+  const response = await fetch("/api/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      teamCode: teamSelect.value,
+      seasonCode: seasonSelect.value,
+      gameIds: gameId
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Lokální import utkání selhal.");
+  }
+
+  setResult(data);
+  serviceStatusText.textContent = `Lokální import hotov pro utkání ${gameId}.`;
+  serviceOutput.textContent = JSON.stringify(data.importResult || data, null, 2);
+  await loadServiceGameSummary();
+  return data;
+}
+
+async function previewServiceStatsFromCbf(gameId) {
+  const phpSessionId = requireSharedServiceSession();
+  const response = await fetch("/api/service-game-preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      teamCode: teamSelect.value,
+      serviceTeamId: serviceTeamIdField.value.trim(),
+      seasonCode: seasonSelect.value,
+      gameId,
+      phpSessionId
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Načtení statistik z ČBF selhalo.");
+  }
+
+  serviceStatusText.textContent =
+    `Načteno hráčů: ${data.matchedPlayerCount || 0}/${data.servicePlayerCount || 0}, ` +
+    `body celkem: ${data.totals?.points ?? 0}.` +
+    (data.missingPlayerCodes?.length ? ` Chybí lokálně: ${data.missingPlayerCodes.join(", ")}.` : "");
+  serviceOutput.textContent = JSON.stringify(data, null, 2);
+  return data;
+}
+
+async function importServiceStatsFromCbf(gameId) {
+  const phpSessionId = requireSharedServiceSession();
+  const response = await fetch("/api/service-game-import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      teamCode: teamSelect.value,
+      serviceTeamId: serviceTeamIdField.value.trim(),
+      seasonCode: seasonSelect.value,
+      gameId,
+      phpSessionId
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Import statistik ze service selhal.");
+  }
+
+  serviceStatusText.textContent =
+    `Ze service importováno hráčů: ${data.importedPlayers || 0}, statistik: ${data.importedStats || 0}.` +
+    (data.scoresheetUrl ? " PDF zápis uložen jako odkaz." : "");
+  serviceOutput.textContent = JSON.stringify(data, null, 2);
+
+  setResult({
+    importResult: {
+      games_processed: 1,
+      games: [
+        {
+          game_id: gameId,
+          our_team: data.teamLabel || "",
+          opponent: data.game?.opponentName || "",
+          imported_players: data.importedPlayers || 0,
+          imported_stats: data.importedStats || 0,
+          missing_player_codes: data.missingPlayerCodes || []
+        }
+      ]
+    },
+    stdout: "Import statistik byl proveden ze service.cbf.cz."
+  });
+
+  await reloadServiceRosterContext();
+  previousGameSelect.value = gameId;
+  serviceStatsEnabledCheckbox.checked = true;
+  updateServiceStatsVisibility();
+  applyPreviousGameSelection(gameId);
+  await loadServiceGameSummary();
+  return data;
+}
+
 function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žádná utkání.") {
   availableGames = games;
   gameSelectionList.innerHTML = "";
@@ -732,7 +860,7 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
   const fragment = document.createDocumentFragment();
 
   games.forEach(game => {
-    const row = document.createElement("label");
+    const row = document.createElement("div");
     row.className = `sync-item ${game.alreadyImported ? "is-match" : "is-add"}`;
 
     const checkbox = document.createElement("input");
@@ -778,9 +906,100 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
     badge.className = `sync-badge ${game.alreadyImported ? "is-match" : "is-add"}`;
     badge.textContent = game.alreadyImported ? "v DB" : "k importu";
 
+    const rowActions = document.createElement("div");
+    rowActions.className = "game-row-actions";
+    const rowStatus = document.createElement("small");
+    rowStatus.className = "game-row-status";
+
+    const importGameAction = document.createElement("button");
+    importGameAction.type = "button";
+    importGameAction.className = "row-action-button";
+    importGameAction.textContent = game.alreadyImported ? "Doplnit DB" : "Import DB";
+    importGameAction.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      serviceGameIdField.value = game.gameId;
+      setGameRowActionState(rowActions, true);
+      setGameRowStatus(rowStatus, "Doplňuji utkání v lokální DB...");
+      try {
+        await loadServiceGameSummary();
+        await importGameToLocalDb(game.gameId);
+        setGameRowStatus(rowStatus, "Utkání je doplněné v lokální DB.", "ok");
+      } catch (error) {
+        setGameRowStatus(rowStatus, error.message, "error");
+      } finally {
+        setGameRowActionState(rowActions, false);
+      }
+    });
+    rowActions.appendChild(importGameAction);
+
+    const statsPreviewAction = document.createElement("button");
+    statsPreviewAction.type = "button";
+    statsPreviewAction.className = "row-action-button";
+    statsPreviewAction.textContent = "Statistiky";
+    statsPreviewAction.disabled = game.servicePlayersCount === 0;
+    statsPreviewAction.dataset.disabledByData = String(game.servicePlayersCount === 0);
+    statsPreviewAction.title = statsPreviewAction.disabled
+      ? "V ČBF zatím nejsou u utkání vyplnění hráči/statistiky."
+      : "Zobrazit náhled statistik z ČBF.";
+    statsPreviewAction.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      serviceGameIdField.value = game.gameId;
+      setGameRowActionState(rowActions, true);
+      setGameRowStatus(rowStatus, "Načítám statistiky z ČBF...");
+      try {
+        await loadServiceGameSummary();
+        const data = await previewServiceStatsFromCbf(game.gameId);
+        setGameRowStatus(
+          rowStatus,
+          `Načteno ${data.matchedPlayerCount || 0}/${data.servicePlayerCount || 0} hráčů, body celkem ${data.totals?.points ?? 0}.`,
+          data.missingPlayerCodes?.length ? "warning" : "ok"
+        );
+      } catch (error) {
+        setGameRowStatus(rowStatus, error.message, "error");
+      } finally {
+        setGameRowActionState(rowActions, false);
+      }
+    });
+    rowActions.appendChild(statsPreviewAction);
+
+    const statsImportAction = document.createElement("button");
+    statsImportAction.type = "button";
+    statsImportAction.className = "row-action-button is-primary";
+    statsImportAction.textContent = "Uložit stat.";
+    statsImportAction.disabled = game.servicePlayersCount === 0;
+    statsImportAction.dataset.disabledByData = String(game.servicePlayersCount === 0);
+    statsImportAction.title = statsImportAction.disabled
+      ? "V ČBF zatím nejsou u utkání vyplnění hráči/statistiky."
+      : "Importovat statistiky z ČBF do lokální DB.";
+    statsImportAction.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      serviceGameIdField.value = game.gameId;
+      setGameRowActionState(rowActions, true);
+      setGameRowStatus(rowStatus, "Ukládám statistiky z ČBF do lokální DB...");
+      try {
+        await loadServiceGameSummary();
+        const data = await importServiceStatsFromCbf(game.gameId);
+        setGameRowStatus(
+          rowStatus,
+          `Uloženo ${data.importedPlayers || 0} hráčů a ${data.importedStats || 0} statistik do lokální DB.`,
+          data.missingPlayerCodes?.length ? "warning" : "ok"
+        );
+      } catch (error) {
+        setGameRowStatus(rowStatus, error.message, "error");
+      } finally {
+        setGameRowActionState(rowActions, false);
+      }
+    });
+    rowActions.appendChild(statsImportAction);
+
     row.appendChild(checkbox);
     row.appendChild(text);
+    row.appendChild(rowActions);
     row.appendChild(badge);
+    row.appendChild(rowStatus);
     fragment.appendChild(row);
   });
 

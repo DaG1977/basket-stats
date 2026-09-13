@@ -398,7 +398,7 @@ button:disabled {
 
 .sync-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
@@ -447,6 +447,61 @@ button:disabled {
   color: var(--muted);
 }
 
+.game-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.row-action-button {
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--ink);
+  box-shadow: none;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.row-action-button.is-primary {
+  border-color: rgba(187, 79, 29, 0.4);
+  background: rgba(187, 79, 29, 0.08);
+  color: var(--accent);
+}
+
+.row-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.game-row-status {
+  display: none;
+  grid-column: 2 / -1;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.game-row-status:not(:empty) {
+  display: block;
+}
+
+.game-row-status.is-ok {
+  color: #2f6b2f;
+  font-weight: 700;
+}
+
+.game-row-status.is-warning {
+  color: #8c6b13;
+  font-weight: 700;
+}
+
+.game-row-status.is-error {
+  color: #a9281a;
+  font-weight: 700;
+}
+
 .sync-badge {
   display: inline-flex;
   align-items: center;
@@ -488,6 +543,18 @@ button:disabled {
 .sync-badge.is-match {
   background: #ebe4d9;
   color: #5d5449;
+}
+
+@media (max-width: 820px) {
+  .sync-item {
+    grid-template-columns: auto 1fr;
+  }
+
+  .game-row-actions,
+  .sync-badge {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
 }
 
 .service-details {
