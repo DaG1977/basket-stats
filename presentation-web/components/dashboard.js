@@ -716,74 +716,6 @@ export function Dashboard() {
 
       <section className="panel">
         <div className="section-head">
-          <div>
-            <h2>Hráči v kalendářním roce {calendarYear || ""}</h2>
-            <p>
-              {clubYearPlayers
-                ? `${clubYearPlayers.calendarYear}: ${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
-                : "Klubový roční přehled se načítá jen ručně, protože je datově náročnější."}
-            </p>
-          </div>
-          <div className="button-row">
-            <button
-              className="export-button"
-              type="button"
-              disabled={clubYearLoading || !/^\d{4}$/.test(String(calendarYear || ""))}
-              onClick={loadClubYearPlayers}
-            >
-              {clubYearLoading ? "Načítám..." : "Načíst klubový přehled"}
-            </button>
-            <button
-              className="export-button secondary"
-              type="button"
-              disabled={!clubYearPlayers?.players?.length}
-              onClick={exportClubYearPlayers}
-            >
-              Export CSV
-            </button>
-          </div>
-        </div>
-        {clubYearPlayers?.players?.length ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Hráč</th>
-                  <th>Ročník</th>
-                  <th>Typ</th>
-                  <th>Utkání</th>
-                  <th>Soutěžní dny</th>
-                  <th>Body</th>
-                  <th>Týmy</th>
-                  <th>Datumy utkání</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clubYearPlayers.players.map((player) => (
-                  <tr key={player.playerId}>
-                    <td>
-                      <strong>{player.fullName}</strong>
-                      <div className="muted">{player.playerCode || ""}</div>
-                    </td>
-                    <td>{player.birthYear || "—"}</td>
-                    <td>{player.assignmentTypeLabel || "—"}</td>
-                    <td>{player.gamesPlayed}</td>
-                    <td>{player.competitionDaysInYear}</td>
-                    <td>{player.totalPoints}</td>
-                    <td>{(player.teams || []).join(", ") || "—"}</td>
-                    <td className="date-list">{(player.dates || []).map(formatDateCount).join(", ") || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">Standardně se načítá jen vybraný tým a detail utkání. Klubový roční přehled načti tlačítkem nahoře.</div>
-        )}
-      </section>
-
-      <section className="panel">
-        <div className="section-head">
           <h2>Detail utkání</h2>
           <p>{gameDetail ? `${gameDetail.game.teamSeason.team.name} vs ${gameDetail.game.opponentName}` : "Klikni na utkání vpravo."}</p>
         </div>
@@ -860,6 +792,74 @@ export function Dashboard() {
           </div>
         ) : (
           <div className="empty-state">Detail utkání se zobrazí tady.</div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Hráči v kalendářním roce {calendarYear || ""}</h2>
+            <p>
+              {clubYearPlayers
+                ? `${clubYearPlayers.calendarYear}: ${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
+                : "Klubový roční přehled se načítá jen ručně, protože je datově náročnější."}
+            </p>
+          </div>
+          <div className="button-row">
+            <button
+              className="export-button"
+              type="button"
+              disabled={clubYearLoading || !/^\d{4}$/.test(String(calendarYear || ""))}
+              onClick={loadClubYearPlayers}
+            >
+              {clubYearLoading ? "Načítám..." : "Načíst klubový přehled"}
+            </button>
+            <button
+              className="export-button secondary"
+              type="button"
+              disabled={!clubYearPlayers?.players?.length}
+              onClick={exportClubYearPlayers}
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
+        {clubYearPlayers?.players?.length ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Hráč</th>
+                  <th>Ročník</th>
+                  <th>Typ</th>
+                  <th>Utkání</th>
+                  <th>Soutěžní dny</th>
+                  <th>Body</th>
+                  <th>Týmy</th>
+                  <th>Datumy utkání</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clubYearPlayers.players.map((player) => (
+                  <tr key={player.playerId}>
+                    <td>
+                      <strong>{player.fullName}</strong>
+                      <div className="muted">{player.playerCode || ""}</div>
+                    </td>
+                    <td>{player.birthYear || "—"}</td>
+                    <td>{player.assignmentTypeLabel || "—"}</td>
+                    <td>{player.gamesPlayed}</td>
+                    <td>{player.competitionDaysInYear}</td>
+                    <td>{player.totalPoints}</td>
+                    <td>{(player.teams || []).join(", ") || "—"}</td>
+                    <td className="date-list">{(player.dates || []).map(formatDateCount).join(", ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">Standardně se načítá jen vybraný tým a detail utkání. Klubový roční přehled načti tlačítkem nahoře.</div>
         )}
       </section>
         </>

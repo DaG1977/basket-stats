@@ -73,8 +73,23 @@ function formatSeasonLabel(code) {
 }
 
 function getBirthYear(birthDate) {
-  const match = String(birthDate || "").match(/^(\d{4})/);
-  return match ? match[1] : "";
+  const value = String(birthDate || "").trim();
+  if (!value) {
+    return "";
+  }
+
+  const isoMatch = value.match(/^(\d{4})/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+
+  const czechDateMatch = value.match(/\b\d{1,2}\.\s*\d{1,2}\.\s*(\d{4})\b/);
+  if (czechDateMatch) {
+    return czechDateMatch[1];
+  }
+
+  const anyYearMatch = value.match(/\b(19\d{2}|20\d{2})\b/);
+  return anyYearMatch ? anyYearMatch[1] : "";
 }
 
 function formatGameResult(game) {
