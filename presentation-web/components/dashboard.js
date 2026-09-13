@@ -101,6 +101,7 @@ export function Dashboard() {
   const [calendarYear, setCalendarYear] = useState("");
   const [overview, setOverview] = useState([]);
   const [clubYearPlayers, setClubYearPlayers] = useState(null);
+  const [clubYearLoading, setClubYearLoading] = useState(false);
   const [selectedTeamSeasonId, setSelectedTeamSeasonId] = useState(null);
   const [teamDetail, setTeamDetail] = useState(null);
   const [selectedGameId, setSelectedGameId] = useState(null);
@@ -236,6 +237,9 @@ export function Dashboard() {
   }, [selectedTeamSeasonId, calendarYear]);
 
   useEffect(() => {
+    setClubYearPlayers(null);
+    return;
+
     if (!/^\d{4}$/.test(String(calendarYear || ""))) {
       setClubYearPlayers(null);
       return;
@@ -292,6 +296,27 @@ export function Dashboard() {
       active = false;
     };
   }, [selectedGameId]);
+
+  async function loadClubYearPlayers() {
+    if (!/^\d{4}$/.test(String(calendarYear || ""))) {
+      setClubYearPlayers(null);
+      setStatus({ message: "Zadej platný kalendářní rok.", kind: "error" });
+      return;
+    }
+
+    try {
+      setClubYearLoading(true);
+      setStatus({ message: "Načítám klubový roční přehled...", kind: "neutral" });
+      const payload = await fetchJson(`/api/club-year-players?calendarYear=${encodeURIComponent(calendarYear)}`);
+      setClubYearPlayers(payload);
+      setStatus({ message: "Klubový roční přehled je načtený.", kind: "success" });
+    } catch (error) {
+      setClubYearPlayers(null);
+      setStatus({ message: error.message || "Nepodařilo se načíst klubový roční přehled.", kind: "error" });
+    } finally {
+      setClubYearLoading(false);
+    }
+  }
 
   function exportClubYearPlayers() {
     if (!clubYearPlayers?.players?.length) {
@@ -635,8 +660,6 @@ export function Dashboard() {
                     <th>Typ</th>
                     <th>Utkání v týmu</th>
                     <th>Dny v týmu</th>
-                    <th>Utkání klub/rok</th>
-                    <th>Dny klub/rok</th>
                     <th>Body</th>
                   </tr>
                 </thead>
@@ -651,8 +674,6 @@ export function Dashboard() {
                       <td>{player.assignmentType === "hosting_in" ? "Hostování" : "Náš hráč"}</td>
                       <td>{player.gamesPlayed}</td>
                       <td>{player.competitionDaysInYear}</td>
-                      <td>{player.clubGamesInYear}</td>
-                      <td>{player.clubCompetitionDaysInYear}</td>
                       <td>{player.totalPoints}</td>
                     </tr>
                   ))}
@@ -700,17 +721,27 @@ export function Dashboard() {
             <p>
               {clubYearPlayers
                 ? `${clubYearPlayers.calendarYear}: ${clubYearPlayers.totals.playerCount} hráčů • ${clubYearPlayers.totals.gameCount} utkání • ${clubYearPlayers.totals.competitionDayCount} soutěžních dnů`
-                : "Zadej kalendářní rok."}
+                : "Klubový roční přehled se načítá jen ručně, protože je datově náročnější."}
             </p>
           </div>
-          <button
-            className="export-button"
-            type="button"
-            disabled={!clubYearPlayers?.players?.length}
-            onClick={exportClubYearPlayers}
-          >
-            Export CSV
-          </button>
+          <div className="button-row">
+            <button
+              className="export-button"
+              type="button"
+              disabled={clubYearLoading || !/^\d{4}$/.test(String(calendarYear || ""))}
+              onClick={loadClubYearPlayers}
+            >
+              {clubYearLoading ? "Načítám..." : "Načíst klubový přehled"}
+            </button>
+            <button
+              className="export-button secondary"
+              type="button"
+              disabled={!clubYearPlayers?.players?.length}
+              onClick={exportClubYearPlayers}
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
         {clubYearPlayers?.players?.length ? (
           <div className="table-wrap">
@@ -747,7 +778,7 @@ export function Dashboard() {
             </table>
           </div>
         ) : (
-          <div className="empty-state">Pro zvolený kalendářní rok zatím nejsou dostupní žádní hráči.</div>
+          <div className="empty-state">Standardně se načítá jen vybraný tým a detail utkání. Klubový roční přehled načti tlačítkem nahoře.</div>
         )}
       </section>
 

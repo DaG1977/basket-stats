@@ -272,6 +272,25 @@ h3 {
   background: var(--accent-dark);
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.export-button.secondary {
+  border-color: var(--line);
+  background: #ffffff;
+  color: #000000;
+}
+
+.export-button.secondary:not(:disabled):hover {
+  border-color: var(--accent);
+  background: #fffaf8;
+  color: var(--accent);
+}
+
 .secondary-button {
   flex: 0 0 auto;
   padding: 10px 14px;

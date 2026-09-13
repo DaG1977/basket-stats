@@ -643,20 +643,12 @@ export async function buildOverview(seasonCode) {
 }
 
 export async function buildTeamSeasonDetail(teamSeasonId, calendarYear) {
-  const clubId = await loadClubId();
   const teamSeason = await loadTeamSeason(teamSeasonId);
   const [roster, games] = await Promise.all([loadRoster(teamSeasonId), loadGames(teamSeasonId)]);
 
   const gamePlayersPerGame = await Promise.all(games.map((game) => loadGamePlayers(game.id)));
   const flatGamePlayers = gamePlayersPerGame.flat();
-  const rosterPlayerIds = roster.map((item) => item.player.id);
-  const clubYearGames = await loadClubGamesInCalendarYear(clubId, calendarYear);
-  const clubYearGamePlayers = await loadClubGamePlayersForPlayers(
-    rosterPlayerIds,
-    clubYearGames.map((game) => game.id)
-  );
-  const clubYearCounts = buildClubYearCounts(clubYearGames, clubYearGamePlayers);
-  const playerSummaries = buildPlayerSummaries(roster, games, flatGamePlayers, calendarYear, clubYearCounts);
+  const playerSummaries = buildPlayerSummaries(roster, games, flatGamePlayers, calendarYear);
   const completedGames = games.filter((game) => getGameOutcome(game) !== "unknown");
   const wins = completedGames.filter((game) => game.outcome === "win").length;
   const losses = completedGames.filter((game) => game.outcome === "loss").length;
