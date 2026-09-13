@@ -729,6 +729,71 @@ function setGameRowStatus(statusElement, message, state = "") {
   statusElement.classList.toggle("is-error", state === "error");
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatBirthYearFromDate(birthDate) {
+  const match = String(birthDate || "").match(/^(\d{4})/);
+  return match ? match[1] : "—";
+}
+
+function renderServiceStatsDetail(data) {
+  const players = Array.isArray(data.players) ? data.players : [];
+  const rows = players.map(player => {
+    const stats = player.stats || {};
+    const rosterNote = player.onRoster
+      ? "na soupisce"
+      : (player.willBeAddedToRoster ? "doplní se na soupisku" : "mimo soupisku");
+    return `
+      <tr>
+        <td><strong>${escapeHtml(player.fullName || player.playerCode || "—")}</strong><br><span>${escapeHtml(player.playerCode || "")}</span></td>
+        <td>${escapeHtml(formatBirthYearFromDate(player.birthDate))}</td>
+        <td>${stats.points ?? 0}</td>
+        <td>${stats.ftMade ?? 0}/${stats.ftMissed ?? 0}</td>
+        <td>${stats.fg2Made ?? 0}</td>
+        <td>${stats.fg3Made ?? 0}</td>
+        <td>${stats.personalFouls ?? 0}</td>
+        <td>${escapeHtml(rosterNote)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const missing = Array.isArray(data.missingPlayerCodes) && data.missingPlayerCodes.length
+    ? `<p class="game-stats-warning">Chybí lokálně: ${escapeHtml(data.missingPlayerCodes.join(", "))}</p>`
+    : "";
+
+  return `
+    <div class="game-stats-detail-head">
+      <strong>Detail statistik z ČBF</strong>
+      <span>${players.length}/${data.servicePlayerCount || 0} hráčů, body celkem ${data.totals?.points ?? 0}</span>
+    </div>
+    ${missing}
+    <div class="game-stats-table-wrap">
+      <table class="game-stats-table">
+        <thead>
+          <tr>
+            <th>Hráč</th>
+            <th>Ročník</th>
+            <th>Body</th>
+            <th>TH</th>
+            <th>2b+</th>
+            <th>3b+</th>
+            <th>PF</th>
+            <th>Soupiska</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="8">Žádní hráči k zobrazení.</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function requireSharedServiceSession() {
   const phpSessionId = sharedServiceSessionIdField.value.trim();
   if (!phpSessionId) {
@@ -781,6 +846,9 @@ async function previewServiceStatsFromCbf(gameId) {
 
   const data = await response.json();
   if (!response.ok) {
+    if (response.status === 405) {
+      throw new Error("Server importeru běží ve staré verzi. Restartuj lokální importer a dej Ctrl+F5.");
+    }
     throw new Error(data.error || "Načtení statistik z ČBF selhalo.");
   }
 
@@ -910,6 +978,8 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
     rowActions.className = "game-row-actions";
     const rowStatus = document.createElement("small");
     rowStatus.className = "game-row-status";
+    const rowDetail = document.createElement("div");
+    rowDetail.className = "game-stats-detail";
 
     const importGameAction = document.createElement("button");
     importGameAction.type = "button";
@@ -951,6 +1021,7 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
       try {
         await loadServiceGameSummary();
         const data = await previewServiceStatsFromCbf(game.gameId);
+        rowDetail.innerHTML = renderServiceStatsDetail(data);
         setGameRowStatus(
           rowStatus,
           `Načteno ${data.matchedPlayerCount || 0}/${data.servicePlayerCount || 0} hráčů, body celkem ${data.totals?.points ?? 0}.`,
@@ -982,6 +1053,9 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
       try {
         await loadServiceGameSummary();
         const data = await importServiceStatsFromCbf(game.gameId);
+        if (Array.isArray(data.players)) {
+          rowDetail.innerHTML = renderServiceStatsDetail(data);
+        }
         setGameRowStatus(
           rowStatus,
           `Uloženo ${data.importedPlayers || 0} hráčů a ${data.importedStats || 0} statistik do lokální DB.`,
@@ -1000,6 +1074,7 @@ function renderGameSelectionList(games, emptyMessage = "Nejsou k dispozici žád
     row.appendChild(rowActions);
     row.appendChild(badge);
     row.appendChild(rowStatus);
+    row.appendChild(rowDetail);
     fragment.appendChild(row);
   });
 
