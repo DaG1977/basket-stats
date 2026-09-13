@@ -217,6 +217,7 @@ function parseTeamBlocksFromGameXml(xml) {
 
     return {
       guest: guestMatch ? guestMatch[1] === "1" : null,
+      id: extractXmlTagValue(body, "id"),
       identity: extractXmlTagValue(body, "identity"),
       name: extractXmlTagValue(body, "name"),
       score: extractXmlTagValue(body, "score")
@@ -224,7 +225,12 @@ function parseTeamBlocksFromGameXml(xml) {
   });
 }
 
-function parseGamePreviewFromXml(xml, teamCode, gameId) {
+function parseBooleanXmlValue(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "t", "yes"].includes(normalized);
+}
+
+function parseGamePreviewFromXml(xml, teamCode, gameId, sourceUrl = "") {
   const teams = parseTeamBlocksFromGameXml(xml);
   const ourTeam = teams.find(team => String(team.identity || "").trim() === String(teamCode || "").trim());
   const opponent = teams.find(team => team !== ourTeam) || null;
@@ -255,6 +261,26 @@ function parseGamePreviewFromXml(xml, teamCode, gameId) {
     homeScore: homeScoreValue,
     guestScore: guestScoreValue,
     ourScore,
+    competitionCode: extractXmlTagValue(xml, "idcompetition"),
+    competitionName: extractXmlTagValue(xml, "cname") || extractXmlTagValue(xml, "catname"),
+    competitionGroupCode: extractXmlTagValue(xml, "idcompetitiongroup"),
+    phaseCode: extractXmlTagValue(xml, "idphase"),
+    categoryName: extractXmlTagValue(xml, "catname"),
+    competitionGroupName: extractXmlTagValue(xml, "cgname"),
+    phaseName: extractXmlTagValue(xml, "pname"),
+    unitName: extractXmlTagValue(xml, "uname"),
+    venueExternalId: extractXmlTagValue(xml, "IDhall"),
+    venueName: extractXmlTagValue(xml, "hallname"),
+    quarterScore: extractXmlTagValue(xml, "score_quarter"),
+    homeTablePoints: parseOptionalIntegerValue(extractXmlTagValue(xml, "points_home")),
+    guestTablePoints: parseOptionalIntegerValue(extractXmlTagValue(xml, "points_guest")),
+    roundNumber: parseOptionalIntegerValue(extractXmlTagValue(xml, "round")),
+    gameNumber: parseOptionalIntegerValue(extractXmlTagValue(xml, "num")),
+    checked: parseBooleanXmlValue(extractXmlTagValue(xml, "checked")),
+    opponentTeamCode: opponent?.identity || "",
+    opponentExternalId: opponent?.id || "",
+    sourceFileName: `gamestats_${String(gameId || "").trim()}.xml`,
+    sourceUrl,
     alreadyImported: false
   };
 }
@@ -267,7 +293,7 @@ async function fetchGamePreview(gameId, teamCode) {
   }
 
   const xml = await response.text();
-  return parseGamePreviewFromXml(xml, teamCode, gameId);
+  return parseGamePreviewFromXml(xml, teamCode, gameId, url);
 }
 
 async function fetchServiceGameStatsCount({ serviceTeamId, gameId, phpSessionId }) {
@@ -385,6 +411,16 @@ function parseIntegerStatValue(value) {
 
   const parsed = Number.parseInt(normalized, 10);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function parseOptionalIntegerValue(value) {
+  const normalized = String(value ?? "").trim().replace(/[^\d-]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function parseServicePlayerStats(html, playerCode) {
@@ -1762,8 +1798,89 @@ async function getGameSummary({ teamCode, seasonCode, gameId }) {
   };
 }
 
+async function ensureGameReferenceRows({ config, preview }) {
+  let competitionId = null;
+  let venueId = null;
+
+  if (preview.competitionCode) {
+    const competitionRows = await postSupabaseRows({
+      ...config,
+      table: "competitions",
+      rows: [
+        {
+          competition_code: preview.competitionCode,
+          name: preview.competitionName || `Soutěž ${preview.competitionCode}`,
+          competition_group_code: preview.competitionGroupCode || null,
+          phase_code: preview.phaseCode || null,
+          category_name: preview.categoryName || null,
+          competition_group_name: preview.competitionGroupName || null,
+          phase_name: preview.phaseName || null,
+          unit_name: preview.unitName || null
+        }
+      ],
+      onConflict: "competition_code"
+    });
+    competitionId = competitionRows?.[0]?.id || null;
+  }
+
+  if (preview.venueExternalId) {
+    const venueRows = await postSupabaseRows({
+      ...config,
+      table: "venues",
+      rows: [
+        {
+          external_id: preview.venueExternalId,
+          name: preview.venueName || `Hala ${preview.venueExternalId}`,
+          court_name: null
+        }
+      ],
+      onConflict: "external_id"
+    });
+    venueId = venueRows?.[0]?.id || null;
+  }
+
+  return { competitionId, venueId };
+}
+
+function buildGameUpsertRowFromPreview({ seasonId, teamSeasonId, gameId, preview, competitionId, venueId }) {
+  return {
+    season_id: seasonId,
+    team_season_id: teamSeasonId,
+    competition_id: competitionId,
+    venue_id: venueId,
+    external_id: String(gameId),
+    opponent_name: preview.opponentName || "Neznámý soupeř",
+    scheduled_at: parseScheduledAtIso(preview.scheduledAtLabel),
+    source_type: "xml",
+    source_file_name: preview.sourceFileName || `gamestats_${String(gameId)}.xml`,
+    source_url: preview.sourceUrl || `https://www.cbf.cz/xml/gamestats.php?g=${encodeURIComponent(gameId)}`,
+    home_score: preview.homeScore,
+    guest_score: preview.guestScore,
+    quarter_score: preview.quarterScore || null,
+    home_table_points: preview.homeTablePoints,
+    guest_table_points: preview.guestTablePoints,
+    round_number: preview.roundNumber,
+    game_number: preview.gameNumber,
+    checked: Boolean(preview.checked),
+    is_home: preview.isHome == null ? null : Boolean(preview.isHome),
+    opponent_team_code: preview.opponentTeamCode || null,
+    opponent_external_id: preview.opponentExternalId || null
+  };
+}
+
 async function ensureLocalGameForServiceImport({ teamCode, seasonCode, gameId }) {
   const { config, seasonId, teamSeasonId } = await resolveTeamSeason({ teamCode, seasonCode });
+  const preview = await fetchGamePreview(gameId, teamCode);
+  const { competitionId, venueId } = await ensureGameReferenceRows({ config, preview });
+  const gameRow = buildGameUpsertRowFromPreview({
+    seasonId,
+    teamSeasonId,
+    gameId,
+    preview,
+    competitionId,
+    venueId
+  });
+
   const existingRows = await fetchSupabaseRows({
     ...config,
     table: "games",
@@ -1771,14 +1888,20 @@ async function ensureLocalGameForServiceImport({ teamCode, seasonCode, gameId })
   });
 
   if (existingRows.length > 0) {
+    const updatedRows = await patchSupabaseRows({
+      ...config,
+      table: "games",
+      query: `id=eq.${existingRows[0].id}`,
+      values: gameRow
+    });
+
     return {
       config,
       teamSeasonId,
-      game: existingRows[0]
+      game: updatedRows?.[0] || { ...existingRows[0], ...gameRow }
     };
   }
 
-  const preview = await fetchGamePreview(gameId, teamCode);
   const insertedRows = await postSupabaseRows({
     ...config,
     table: "games",
@@ -1807,10 +1930,19 @@ async function ensureLocalGameForServiceImport({ teamCode, seasonCode, gameId })
         query: `select=id,external_id,opponent_name,scheduled_at,home_score,guest_score,is_home,scoresheet_url&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
       }))[0];
 
+  const patchedInsertedRows = insertedGame?.id
+    ? await patchSupabaseRows({
+        ...config,
+        table: "games",
+        query: `id=eq.${insertedGame.id}`,
+        values: gameRow
+      })
+    : [];
+
   return {
     config,
     teamSeasonId,
-    game: insertedGame
+    game: patchedInsertedRows?.[0] || insertedGame
   };
 }
 
