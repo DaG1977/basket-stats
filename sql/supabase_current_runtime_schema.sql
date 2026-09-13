@@ -142,6 +142,7 @@ create table if not exists public.games (
     source_type text not null default 'xml',
     source_file_name text,
     source_url text,
+    scoresheet_url text,
     home_score integer,
     guest_score integer,
     quarter_score text,

@@ -15,6 +15,7 @@ const loadGamesButton = document.getElementById("load-games-button");
 const loadRosterButton = document.getElementById("load-roster-button");
 const sendRosterButton = document.getElementById("send-roster-button");
 const importServiceGameButton = document.getElementById("import-service-game-button");
+const previewServiceStatsButton = document.getElementById("preview-service-stats-button");
 const importServiceStatsButton = document.getElementById("import-service-stats-button");
 const selectAllGamesButton = document.getElementById("select-all-games-button");
 const clearGamesButton = document.getElementById("clear-games-button");
@@ -302,6 +303,7 @@ function setServiceLoadingState(isLoading) {
   loadRosterButton.disabled = isLoading;
   sendRosterButton.disabled = isLoading || rosterPlayers.length === 0;
   importServiceGameButton.disabled = isLoading;
+  previewServiceStatsButton.disabled = isLoading;
   importServiceStatsButton.disabled = isLoading;
   selectAllRosterButton.disabled = isLoading || rosterPlayers.length === 0;
   clearRosterButton.disabled = isLoading || rosterPlayers.length === 0;
@@ -1487,6 +1489,54 @@ importServiceGameButton.addEventListener("click", async () => {
   }
 });
 
+previewServiceStatsButton.addEventListener("click", async () => {
+  const gameId = serviceGameIdField.value.trim();
+  if (!gameId) {
+    serviceStatusText.textContent = "Vyplň ID utkání, jehož statistiky chceš načíst z ČBF.";
+    return;
+  }
+
+  if (!sharedServiceSessionIdField.value.trim()) {
+    serviceStatusText.textContent = "Vyplň PHPSESSID.";
+    return;
+  }
+
+  setServiceLoadingState(true);
+  serviceStatusText.textContent = "Načítám statistiky z ČBF/service...";
+
+  try {
+    const response = await fetch("/api/service-game-preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        teamCode: teamSelect.value,
+        serviceTeamId: serviceTeamIdField.value.trim(),
+        seasonCode: seasonSelect.value,
+        gameId,
+        phpSessionId: sharedServiceSessionIdField.value.trim()
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Načtení statistik z ČBF selhalo.");
+    }
+
+    serviceStatusText.textContent =
+      `Načteno hráčů: ${data.matchedPlayerCount || 0}/${data.servicePlayerCount || 0}, ` +
+      `body celkem: ${data.totals?.points ?? 0}.` +
+      (data.missingPlayerCodes?.length ? ` Chybí lokálně: ${data.missingPlayerCodes.join(", ")}.` : "");
+    serviceOutput.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    serviceStatusText.textContent = "Načtení statistik z ČBF selhalo.";
+    serviceOutput.textContent = error.message;
+  } finally {
+    setServiceLoadingState(false);
+  }
+});
+
 importServiceStatsButton.addEventListener("click", async () => {
   const gameId = serviceGameIdField.value.trim();
   if (!gameId) {
@@ -1522,7 +1572,9 @@ importServiceStatsButton.addEventListener("click", async () => {
       throw new Error(data.error || "Import statistik ze service selhal.");
     }
 
-    serviceStatusText.textContent = `Ze service importováno hráčů: ${data.importedPlayers || 0}, statistik: ${data.importedStats || 0}.`;
+    serviceStatusText.textContent =
+      `Ze service importováno hráčů: ${data.importedPlayers || 0}, statistik: ${data.importedStats || 0}.` +
+      (data.scoresheetUrl ? " PDF zápis uložen jako odkaz." : "");
     serviceOutput.textContent = JSON.stringify(data, null, 2);
 
     setResult({

@@ -777,6 +777,18 @@ export function Dashboard() {
                 <span>Hřiště</span>
                 <strong>{gameDetail.game.venue?.name || "—"}</strong>
               </div>
+              <div>
+                <span>Zápis</span>
+                {gameDetail.game.scoresheetUrl ? (
+                  <strong>
+                    <a href={gameDetail.game.scoresheetUrl} target="_blank" rel="noreferrer">
+                      PDF zápis
+                    </a>
+                  </strong>
+                ) : (
+                  <strong>—</strong>
+                )}
+              </div>
             </div>
 
             <div className="table-wrap">

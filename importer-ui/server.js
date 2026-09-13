@@ -3,6 +3,35 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
+function loadLocalEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    const value = rawValue.replace(/^['"]|['"]$/g, "");
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnvFile(path.join(__dirname, "..", ".env.local"));
+loadLocalEnvFile(path.join(__dirname, ".env.local"));
+
 const PORT = process.env.PORT || 3010;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const OUTPUT_DIR = path.join(__dirname, "generated");
@@ -288,6 +317,39 @@ function extractServicePlayerIdsFromStatsHtml(html) {
   ];
 }
 
+function normalizeCbfFileUrl(url) {
+  const raw = decodeHtmlEntities(url);
+  if (!raw) {
+    return "";
+  }
+
+  const chromeViewerMatch = raw.match(/https:\/\/www\.cbf\.cz\/files\/[^"' <>)]+\.pdf/i);
+  if (chromeViewerMatch) {
+    return chromeViewerMatch[0];
+  }
+
+  if (/^https:\/\/www\.cbf\.cz\/files\/[^"' <>)]+\.pdf$/i.test(raw)) {
+    return raw;
+  }
+
+  if (/^\/files\/[^"' <>)]+\.pdf$/i.test(raw)) {
+    return `https://www.cbf.cz${raw}`;
+  }
+
+  return "";
+}
+
+function extractServiceScoresheetUrl(html) {
+  const source = String(html || "");
+  const linkMatch = source.match(/href=["']([^"']*\/files\/[^"']+\.pdf)["']/i);
+  if (linkMatch) {
+    return normalizeCbfFileUrl(linkMatch[1]);
+  }
+
+  const plainMatch = source.match(/https:\/\/www\.cbf\.cz\/files\/[^"' <>)]+\.pdf/i);
+  return plainMatch ? normalizeCbfFileUrl(plainMatch[0]) : "";
+}
+
 async function fetchServicePlayerEditHtml({ serviceTeamId, gameId, phpSessionId, playerCode }) {
   const url = `https://service.cbf.cz/?cross=teams&action=results&team=${encodeURIComponent(serviceTeamId)}&game=${encodeURIComponent(gameId)}&statistics=lists&player_var=edit&player_id=${encodeURIComponent(playerCode)}`;
   const response = await fetch(url, {
@@ -571,6 +633,26 @@ async function postSupabaseRows({ baseUrl, serviceRoleKey, table, rows, onConfli
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Supabase zápis selhal pro ${table}. HTTP ${response.status}. ${errorText}`);
+  }
+
+  return response.json();
+}
+
+async function patchSupabaseRows({ baseUrl, serviceRoleKey, table, query, values }) {
+  const response = await fetch(`${baseUrl}/rest/v1/${table}?${query}`, {
+    method: "PATCH",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(values)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Supabase aktualizace selhala pro ${table}. HTTP ${response.status}. ${errorText}`);
   }
 
   return response.json();
@@ -1631,7 +1713,7 @@ async function getGameSummary({ teamCode, seasonCode, gameId }) {
   const gameRows = await fetchSupabaseRows({
     ...config,
     table: "games",
-    query: `select=external_id,opponent_name,scheduled_at,home_score,guest_score,is_home&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
+    query: `select=external_id,opponent_name,scheduled_at,home_score,guest_score,is_home,scoresheet_url&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
   });
 
   if (gameRows.length === 0) {
@@ -1645,9 +1727,10 @@ async function getGameSummary({ teamCode, seasonCode, gameId }) {
         scoreLabel: preview.scoreLabel,
         isHome: preview.isHome,
         homeScore: preview.homeScore,
-        guestScore: preview.guestScore,
-        ourScore: preview.ourScore,
-        source: "cbf"
+    guestScore: preview.guestScore,
+    ourScore: preview.ourScore,
+    scoresheetUrl: "",
+    source: "cbf"
       };
     } catch (error) {
       return null;
@@ -1674,6 +1757,7 @@ async function getGameSummary({ teamCode, seasonCode, gameId }) {
       isHome == null || homeScore == null || guestScore == null
         ? null
         : (isHome ? homeScore : guestScore),
+    scoresheetUrl: String(game.scoresheet_url || "").trim(),
     source: "local"
   };
 }
@@ -1683,7 +1767,7 @@ async function ensureLocalGameForServiceImport({ teamCode, seasonCode, gameId })
   const existingRows = await fetchSupabaseRows({
     ...config,
     table: "games",
-    query: `select=id,external_id,opponent_name,scheduled_at,home_score,guest_score,is_home&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
+    query: `select=id,external_id,opponent_name,scheduled_at,home_score,guest_score,is_home,scoresheet_url&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
   });
 
   if (existingRows.length > 0) {
@@ -1720,7 +1804,7 @@ async function ensureLocalGameForServiceImport({ teamCode, seasonCode, gameId })
     : (await fetchSupabaseRows({
         ...config,
         table: "games",
-        query: `select=id,external_id,opponent_name,scheduled_at,home_score,guest_score,is_home&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
+        query: `select=id,external_id,opponent_name,scheduled_at,home_score,guest_score,is_home,scoresheet_url&team_season_id=eq.${teamSeasonId}&external_id=eq.${encodeURIComponent(gameId)}&limit=1`
       }))[0];
 
   return {
@@ -1743,6 +1827,7 @@ async function importServiceGameToLocalDb({ teamCode, serviceTeamId, seasonCode,
   const playerByCode = new Map(allPlayers.map(player => [player.playerCode, player]));
 
   const statsHtml = await fetchServiceGameStatsHtml({ serviceTeamId, gameId, phpSessionId });
+  const scoresheetUrl = extractServiceScoresheetUrl(statsHtml);
   const servicePlayerCodes = extractServicePlayerIdsFromStatsHtml(statsHtml);
 
   const missingPlayerCodes = servicePlayerCodes.filter(playerCode => !playerByCode.has(playerCode));
@@ -1858,14 +1943,86 @@ async function importServiceGameToLocalDb({ teamCode, serviceTeamId, seasonCode,
     onConflict: "game_player_id"
   });
 
+  if (scoresheetUrl) {
+    await patchSupabaseRows({
+      ...config,
+      table: "games",
+      query: `id=eq.${game.id}`,
+      values: {
+        scoresheet_url: scoresheetUrl
+      }
+    });
+  }
+
   const summaryGame = await getGameSummary({ teamCode, seasonCode, gameId });
   return {
     game: summaryGame,
     importedPlayers: playerStatDetails.length,
     importedStats: playerStatDetails.length,
     missingPlayerCodes,
+    scoresheetUrl,
     servicePlayerCount: servicePlayerCodes.length,
     rosterPlayerCount: refreshedRosterByCode.size
+  };
+}
+
+async function buildServiceGameStatsPreview({ teamCode, serviceTeamId, seasonCode, gameId, phpSessionId }) {
+  const roster = await getTeamRoster({ teamCode, seasonCode });
+  const rosterByCode = new Map(roster.map(player => [player.playerCode, player]));
+  const allPlayers = await getAllPlayers();
+  const playerByCode = new Map(allPlayers.map(player => [player.playerCode, player]));
+  const statsHtml = await fetchServiceGameStatsHtml({ serviceTeamId, gameId, phpSessionId });
+  const scoresheetUrl = extractServiceScoresheetUrl(statsHtml);
+  const servicePlayerCodes = extractServicePlayerIdsFromStatsHtml(statsHtml);
+  const missingPlayerCodes = servicePlayerCodes.filter(playerCode => !playerByCode.has(playerCode));
+  const validPlayerCodes = servicePlayerCodes.filter(playerCode => playerByCode.has(playerCode));
+  const players = [];
+
+  for (const playerCode of validPlayerCodes) {
+    const detailHtml = await fetchServicePlayerEditHtml({ serviceTeamId, gameId, phpSessionId, playerCode });
+    const stats = parseServicePlayerStats(detailHtml, playerCode);
+    const player = playerByCode.get(playerCode);
+    players.push({
+      playerCode,
+      fullName: player?.fullName || "",
+      birthDate: player?.birthDate || "",
+      onRoster: rosterByCode.has(playerCode),
+      willBeAddedToRoster: !rosterByCode.has(playerCode),
+      stats
+    });
+  }
+
+  let game = await getGameSummary({ teamCode, seasonCode, gameId });
+  if (!game) {
+    try {
+      game = await fetchGamePreview(gameId, teamCode);
+    } catch (_) {
+      game = null;
+    }
+  }
+
+  const totals = players.reduce(
+    (acc, item) => {
+      acc.points += item.stats.points || 0;
+      acc.ftMade += item.stats.ftMade || 0;
+      acc.ftMissed += item.stats.ftMissed || 0;
+      acc.fg2Made += item.stats.fg2Made || 0;
+      acc.fg3Made += item.stats.fg3Made || 0;
+      acc.personalFouls += item.stats.personalFouls || 0;
+      return acc;
+    },
+    { points: 0, ftMade: 0, ftMissed: 0, fg2Made: 0, fg3Made: 0, personalFouls: 0 }
+  );
+
+  return {
+    game,
+    servicePlayerCount: servicePlayerCodes.length,
+    matchedPlayerCount: players.length,
+    missingPlayerCodes,
+    willAddToRosterCount: players.filter(player => player.willBeAddedToRoster).length,
+    totals,
+    scoresheetUrl,
+    players
   };
 }
 
@@ -2666,6 +2823,45 @@ async function handleServiceGameImport(req, res) {
   }
 }
 
+async function handleServiceGamePreview(req, res) {
+  try {
+    const body = await readRequestBody(req);
+    const payload = JSON.parse(body);
+
+    const teamCode = String(payload.teamCode || "").trim();
+    const serviceTeamId = String(payload.serviceTeamId || "").trim();
+    const seasonCode = String(payload.seasonCode || "").trim();
+    const gameId = String(payload.gameId || "").trim();
+    const phpSessionId = String(payload.phpSessionId || "").trim();
+
+    if (!teamCode || !serviceTeamId || !seasonCode || !gameId || !phpSessionId) {
+      sendJson(res, 400, { error: "Chybí tým, interní service ID, sezóna, ID utkání nebo PHPSESSID." });
+      return;
+    }
+
+    const preview = await buildServiceGameStatsPreview({
+      teamCode,
+      serviceTeamId,
+      seasonCode,
+      gameId,
+      phpSessionId
+    });
+
+    sendJson(res, 200, {
+      ok: true,
+      teamCode,
+      serviceTeamId,
+      seasonCode,
+      gameId,
+      ...preview
+    });
+  } catch (error) {
+    sendJson(res, 500, {
+      error: error.message || "Nepodařilo se načíst náhled statistik ze service."
+    });
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/team-games") {
     handleTeamGames(req, res);
@@ -2724,6 +2920,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && req.url === "/api/service-game-import") {
     handleServiceGameImport(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/service-game-preview") {
+    handleServiceGamePreview(req, res);
     return;
   }
 

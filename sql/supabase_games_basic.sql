@@ -46,6 +46,7 @@ create table if not exists public.games (
     source_type text not null default 'xml',
     source_file_name text,
     source_url text,
+    scoresheet_url text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     unique (external_id, team_season_id)

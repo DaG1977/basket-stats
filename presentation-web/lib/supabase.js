@@ -238,7 +238,7 @@ async function loadRoster(teamSeasonId) {
 
 async function loadGames(teamSeasonId) {
   const rows = await supabaseSelect("games", {
-    select: "id,external_id,opponent_name,scheduled_at,is_home,home_score,guest_score,checked,round_number,competitions(id,name,category_name,competition_group_name,phase_name),venues(id,name,court_name)",
+    select: "id,external_id,opponent_name,scheduled_at,is_home,home_score,guest_score,checked,round_number,scoresheet_url,competitions(id,name,category_name,competition_group_name,phase_name),venues(id,name,court_name)",
     team_season_id: `eq.${teamSeasonId}`,
     order: "scheduled_at.desc.nullslast,id.desc"
   });
@@ -253,6 +253,7 @@ async function loadGames(teamSeasonId) {
     guestScore: row.guest_score,
     checked: row.checked,
     roundNumber: row.round_number,
+    scoresheetUrl: row.scoresheet_url,
     resultLabel: formatGameResult(row),
     outcome: getGameOutcome(row),
     competition: row.competitions
@@ -699,7 +700,7 @@ export async function buildClubYearPlayers(calendarYear) {
 
 export async function buildGameDetail(gameId) {
   const rows = await supabaseSelect("games", {
-    select: "id,external_id,opponent_name,scheduled_at,is_home,home_score,guest_score,quarter_score,checked,round_number,team_seasons!inner(id,category,teams!inner(id,name,team_code),seasons!inner(id,code,name)),competitions(id,name,category_name,competition_group_name,phase_name),venues(id,name,court_name)",
+    select: "id,external_id,opponent_name,scheduled_at,is_home,home_score,guest_score,quarter_score,checked,round_number,scoresheet_url,team_seasons!inner(id,category,teams!inner(id,name,team_code),seasons!inner(id,code,name)),competitions(id,name,category_name,competition_group_name,phase_name),venues(id,name,court_name)",
     id: `eq.${gameId}`,
     limit: "1"
   });
@@ -723,6 +724,7 @@ export async function buildGameDetail(gameId) {
       quarterScore: row.quarter_score,
       checked: row.checked,
       roundNumber: row.round_number,
+      scoresheetUrl: row.scoresheet_url,
       resultLabel: formatGameResult(row),
       outcome: getGameOutcome(row),
       teamSeason: {
