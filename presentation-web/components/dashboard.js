@@ -78,8 +78,24 @@ function splitPlayerName(fullName) {
   };
 }
 
+function extractLiveMatchId(input) {
+  const text = String(input || "").trim();
+  if (/^\d+$/.test(text)) {
+    return text;
+  }
+
+  try {
+    const url = new URL(text);
+    return url.searchParams.get("MatchID") || url.searchParams.get("matchID") || "";
+  } catch {
+    const match = text.match(/MatchID=(\d+)/i);
+    return match ? match[1] : "";
+  }
+}
+
 export function Dashboard() {
   const [status, setStatus] = useState({ message: "Načítám data...", kind: "neutral" });
+  const [activeView, setActiveView] = useState("stats");
   const [seasons, setSeasons] = useState([]);
   const [seasonCode, setSeasonCode] = useState("");
   const [calendarYear, setCalendarYear] = useState("");
@@ -89,6 +105,28 @@ export function Dashboard() {
   const [teamDetail, setTeamDetail] = useState(null);
   const [selectedGameId, setSelectedGameId] = useState(null);
   const [gameDetail, setGameDetail] = useState(null);
+  const [liveInput, setLiveInput] = useState("");
+  const [liveMatch, setLiveMatch] = useState(null);
+  const [liveMatches, setLiveMatches] = useState([]);
+  const [liveStatus, setLiveStatus] = useState({
+    message: "Zadej MatchID nebo URL ze zapis.cz.basketball.",
+    kind: "neutral"
+  });
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("skokani-live-matches") || "[]");
+      if (Array.isArray(saved)) {
+        setLiveMatches(saved);
+      }
+    } catch {
+      setLiveMatches([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("skokani-live-matches", JSON.stringify(liveMatches));
+  }, [liveMatches]);
 
   useEffect(() => {
     let active = true;
@@ -295,6 +333,54 @@ export function Dashboard() {
     ]);
   }
 
+  async function loadLiveMatch(input = liveInput) {
+    const matchId = extractLiveMatchId(input);
+    if (!matchId) {
+      setLiveStatus({ message: "Zadej platné MatchID nebo URL live zápisu.", kind: "error" });
+      return;
+    }
+
+    try {
+      setLiveStatus({ message: "Načítám live zápis...", kind: "neutral" });
+      const payload = await fetchJson(`/api/live-zapis?matchId=${encodeURIComponent(matchId)}`);
+      setLiveMatch(payload);
+      setLiveInput(matchId);
+      setLiveStatus({ message: "Live skóre je načtené.", kind: "success" });
+    } catch (error) {
+      setLiveMatch(null);
+      setLiveStatus({
+        message: `${error.message || "Nepodařilo se načíst live zápis."} Pro automatické načítání musí mít backend přihlášenou session.`,
+        kind: "error"
+      });
+    }
+  }
+
+  function saveLiveMatch() {
+    const matchId = extractLiveMatchId(liveInput || liveMatch?.matchId);
+    if (!matchId) {
+      setLiveStatus({ message: "Nejdřív zadej MatchID nebo URL live zápisu.", kind: "error" });
+      return;
+    }
+
+    setLiveMatches((items) => {
+      if (items.some((item) => item.matchId === matchId)) {
+        return items;
+      }
+      return [
+        {
+          matchId,
+          label: liveMatch ? `${liveMatch.homeTeam} - ${liveMatch.awayTeam}` : `Utkání ${matchId}`
+        },
+        ...items
+      ];
+    });
+    setLiveStatus({ message: "Utkání je uložené v lokálním seznamu tohoto prohlížeče.", kind: "success" });
+  }
+
+  function removeLiveMatch(matchId) {
+    setLiveMatches((items) => items.filter((item) => item.matchId !== matchId));
+  }
+
   return (
     <main className="shell">
       <section className="hero">
@@ -321,15 +407,107 @@ export function Dashboard() {
             Přehled týmů, soupisek, hráčů a utkání BK Skokani Brno nad klubovou databází. Vyber sezónu, otevři tým a
             sleduj také počet utkání a soutěžních dnů v kalendářním roce.
           </p>
-          <div className="hero-pills" aria-label="Obsah statistik">
-            <span>Soupisky</span>
-            <span>Hráči</span>
-            <span>Utkání</span>
-            <span>Soutěžní dny</span>
+          <div className="hero-pills hero-tabs" aria-label="Sekce statistik">
+            <button className={activeView === "stats" ? "is-active" : ""} type="button" onClick={() => setActiveView("stats")}>
+              Statistiky
+            </button>
+            <button className={activeView === "live" ? "is-active" : ""} type="button" onClick={() => setActiveView("live")}>
+              Live zápis
+            </button>
           </div>
         </div>
       </section>
 
+      {activeView === "live" ? (
+        <>
+          <section className="panel live-panel">
+            <div className="section-head">
+              <div>
+                <h2>Live zápis ČBF</h2>
+                <p>Načtení skóre a posledního známého času ze zápisu zapis.cz.basketball.</p>
+              </div>
+            </div>
+
+            <div className="toolbar-card live-toolbar">
+              <label className="field">
+                <span>MatchID nebo URL utkání</span>
+                <input
+                  value={liveInput}
+                  placeholder="Např. 136417 nebo URL MatchLive"
+                  onChange={(event) => setLiveInput(event.target.value)}
+                />
+              </label>
+              <div className="live-actions">
+                <button className="export-button" type="button" onClick={() => loadLiveMatch()}>
+                  Načíst live skóre
+                </button>
+                <button className="secondary-button" type="button" onClick={saveLiveMatch}>
+                  Uložit do seznamu
+                </button>
+              </div>
+            </div>
+
+            <section className={`status-card ${liveStatus.kind}`}>{liveStatus.message}</section>
+
+            {liveMatch ? (
+              <div className="live-score-card">
+                <div>
+                  <span>Domácí</span>
+                  <strong>{liveMatch.homeTeam}</strong>
+                </div>
+                <div className="live-score">
+                  <strong>
+                    {liveMatch.homeScore}:{liveMatch.awayScore}
+                  </strong>
+                  <span>
+                    {liveMatch.latestPeriod || "—"}
+                    {liveMatch.latestTime ? ` • poslední záznam ${liveMatch.latestTime}` : ""}
+                  </span>
+                </div>
+                <div>
+                  <span>Hosté</span>
+                  <strong>{liveMatch.awayTeam}</strong>
+                </div>
+                <p>
+                  {liveMatch.competitionName || "Soutěž neuvedena"} {liveMatch.matchDate ? `• ${liveMatch.matchDate}` : ""}
+                  {liveMatch.scoringEventCount ? ` • ${liveMatch.scoringEventCount} bodových záznamů` : ""}
+                </p>
+              </div>
+            ) : (
+              <div className="empty-state">
+                Import utkání zatím znamená vložení MatchID nebo URL live zápisu. Backend pak stránku stáhne, vyparsuje skóre a
+                veřejný web může tento endpoint pravidelně obnovovat. Pro trvalý klubový seznam můžeme navázat Supabase tabulkou
+                live_matches.
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <div className="section-head">
+              <h2>Sledovaná live utkání</h2>
+              <p>{liveMatches.length ? `${liveMatches.length} uložených zápasů` : "Zatím žádné."}</p>
+            </div>
+            <div className="stack-list">
+              {liveMatches.length ? (
+                liveMatches.map((item) => (
+                  <div className="saved-live-card" key={item.matchId}>
+                    <button type="button" onClick={() => loadLiveMatch(item.matchId)}>
+                      <strong>{item.label}</strong>
+                      <span>MatchID {item.matchId}</span>
+                    </button>
+                    <button className="text-button" type="button" onClick={() => removeLiveMatch(item.matchId)}>
+                      Odebrat
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state">Ulož si sem utkání, která chceš během zápasu rychle obnovovat.</div>
+              )}
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
       <section className="toolbar-card">
         <label className="field">
           <span>Sezóna</span>
@@ -641,6 +819,8 @@ export function Dashboard() {
           <div className="empty-state">Detail utkání se zobrazí tady.</div>
         )}
       </section>
+        </>
+      )}
     </main>
   );
 }
