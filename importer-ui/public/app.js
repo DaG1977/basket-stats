@@ -73,6 +73,37 @@ const serviceOutput = document.getElementById("service-output");
 const rosterAdminOutput = document.getElementById("roster-admin-output");
 const serviceSyncOutput = document.getElementById("service-sync-output");
 
+function enhanceServiceImportActions() {
+  if (!importServiceGameButton || !previewServiceStatsButton || !importServiceStatsButton) {
+    return;
+  }
+
+  importServiceGameButton.textContent = "1. Doplnit utkání do DB";
+  previewServiceStatsButton.textContent = "2. Zobrazit statistiky z ČBF";
+  importServiceStatsButton.textContent = "3. Uložit statistiky do DB";
+
+  const actionsRow = importServiceGameButton.closest(".actions-row");
+  if (!actionsRow || document.getElementById("service-import-help")) {
+    return;
+  }
+
+  const help = document.createElement("div");
+  help.id = "service-import-help";
+  help.className = "service-import-help";
+  help.innerHTML = `
+    <strong>Utkání a statistiky z ČBF</strong>
+    <p>
+      Tato část je pro situaci, kdy je utkání už vyplněné v service/ČBF.
+      Nejdřív založ nebo doplň utkání v lokální DB, potom si zobraz kontrolní náhled statistik
+      a nakonec je ulož do lokální DB.
+    </p>
+  `;
+
+  actionsRow.parentNode.insertBefore(help, actionsRow);
+}
+
+enhanceServiceImportActions();
+
 const teamOptions = [
   { code: "12494", serviceTeamId: "12495", serviceTeamName: "BBA Skokani Brno A", name: "BK Skokani Brno U10A" },
   { code: "14516", serviceTeamId: "14516", serviceTeamName: "BBA Skokani Brno B", name: "BK Skokani Brno U10B" },

@@ -165,6 +165,26 @@ button:disabled {
   flex: 1 1 220px;
 }
 
+.service-import-help {
+  grid-column: 1 / -1;
+  padding: 16px 18px;
+  border: 1px solid rgba(187, 79, 29, 0.35);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(242, 185, 92, 0.18), rgba(255, 250, 242, 0.95));
+}
+
+.service-import-help strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+
+.service-import-help p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .secondary-button {
   background: linear-gradient(135deg, #f0d8a2, var(--accent-2));
   color: #3d2d13;
