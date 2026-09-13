@@ -88,7 +88,8 @@ const teamOptions = [
 ];
 
 const seasonOptions = [
-  { code: "2025-2026", name: "2025/2026", selected: true },
+  { code: "2026-2027", name: "2026/2027", selected: true },
+  { code: "2025-2026", name: "2025/2026" },
   { code: "2024-2025", name: "2024/2025" },
   { code: "2023-2024", name: "2023/2024" }
 ];

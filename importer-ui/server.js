@@ -43,6 +43,7 @@ const SERVICE_STAT_KEYS = [
 
 const SERVICE_CLUB_ID = "1638";
 const SERVICE_SEASON_ID_BY_CODE = {
+  "2026-2027": process.env.CBF_SERVICE_SEASON_ID_2026_2027 || "",
   "2025-2026": "35"
 };
 
